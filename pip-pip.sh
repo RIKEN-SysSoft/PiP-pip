@@ -17,6 +17,7 @@ print_usage () {
     echo "     --pip <PIP_VERSION:2|3>"
     echo "     --clean"
     echo "     --dryrun"
+    echo "     --help | --usage"
     if [ $# -ne 0 ]; then
 	echo "     --repo=GITHUB|RCCS"
 	echo "     --all"
@@ -59,6 +60,7 @@ while [ $# -gt 0 ]; do
 	-*dry*)		flag_dryrun=true;;
 	-*all)		flag_all=true;;
         -*secret)	print_usage 1;;
+	-*help|-*usage) print_usage;;
 	*)		echo "Unknown option"; print_usage;;
     esac
     shift
@@ -97,7 +99,7 @@ build () {
 
 if $flag_clean; then
     if is_partof $prefix $build ]; then
-	echo "--clean is disabled since PREFIX is part of BUILD"
+	echo "--clean is disabled since BUILD includes PREFIX"
 	flag_clean=false
     fi
 fi
