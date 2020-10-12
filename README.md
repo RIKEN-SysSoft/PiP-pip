@@ -24,20 +24,20 @@ Supported Linux (RHEL and Centos are tested and guaranteed):
 
     $ ./pip-pip.sh <OPTIONS>
 
-- --prefix <PREFIX_DIR>
+- `--prefix <PREFIX_DIR>`
   Specifying install directory. Default is the current directory
 
-- --build <BUILD DIR>
+- `--build <BUILD DIR>`
   Specifying build directory. Default is the current directory
 
-- --pip <PIP_VERSION>
+- `--pip <PIP_VERSION>`
   Specifying PiP version number. Currently, "2" or "3" is valid. "1"
   (PiP-v1) is deprecatde and unable to specify.
 
-- --clean
+- `--clean`
   Remove the specified build directory.
 
-- --dryrun
+- `--dryrun`
   Dryrun
 
 # Author
