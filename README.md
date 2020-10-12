@@ -1,6 +1,6 @@
 # PiP-pip
 
-[PiP](../../PiP/README.md) package installing program
+[PiP](../../../PiP/README.md) package installing program
 
 # Description
 
