@@ -1,12 +1,12 @@
 # PiP-pip
 
-[PiP](../PiP/README.md) package installing program
+[PiP](../../PiP/README.md) package installing program
 
 # Description
 
 The `pip-pip.sh` is the program to build and install
-[PiP](../PiP/README.md) and related software
-([PiP-glibc](../PiP-glibc) and [PiP-gdb](../PiP-gdb).
+[PiP](../../PiP/README.md) and related software
+([PiP-glibc](../../PiP-glibc) and [PiP-gdb](../../PiP-gdb).
 
 # Prerequisite
 
