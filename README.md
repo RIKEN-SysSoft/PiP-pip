@@ -6,7 +6,7 @@
 
 `pip-pip.sh` is the program to build and install
 [PiP](../../PiP), [PiP-glibc](../../../PiP-glibc) and
-[PiP-gdb](../../../PiP-gdb)).
+[PiP-gdb](../../../PiP-gdb).
 
 # Prerequisite
 
@@ -22,7 +22,7 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 
 # Usage
 
-    $ ./pip-pip.sh <OPTIONS>
+    $ ./pip-pip <OPTIONS>
 
 - `--prefix=<PREFIX_DIR>`
   Specifying install directory. Default is the current directory.
@@ -32,7 +32,7 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 
 - `--version=<PIP_VERSION>`
   Specifying PiP version number. Currently, "2" or "3" is valid. "1"
-  (PiP-v1) is deprecatde and unable to specify.  Refer to
+  (PiP-v1) is deprecated and unable to specify.  Refer to
   [PiP](../../PiP) for the version differences.
 
 - `--clean`
@@ -49,4 +49,4 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 
 # Author
 
-Atsushi Hori (Riken CCS)
+Atsushi Hori, Riken CCS
