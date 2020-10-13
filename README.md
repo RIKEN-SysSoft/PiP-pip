@@ -4,7 +4,7 @@
 
 # Description
 
-`pip-pip.sh` is the program to build and install
+`pip-pip` is the program to build and install
 [PiP](../../PiP), [PiP-glibc](../../../PiP-glibc) and
 [PiP-gdb](../../../PiP-gdb).
 
