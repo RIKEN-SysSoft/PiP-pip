@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -eu
-
 cmd=$0
 cwd=`pwd`
 
@@ -10,58 +8,63 @@ pip_default_version=2
 begin_str=">>>"
 
 print_usage () {
-    echo "`basename $cmd` <OPTIONS>"
+    echo "`basename $cmd` [<OPTIONS>]"
     echo "   OPTIONS:"
-    echo "     --prefix <PREFIX_DIR>"
-    echo "     --build <BUILD_DIR>"
-    echo "     --pip <PIP_VERSION:2|3>"
+    echo "     --prefix=<PREFIX_DIR>"
+    echo "     --build=<BUILD_DIR>"
+    echo "     --version=<PIP_VERSION:2|3>"
     echo "     --clean"
     echo "     --dryrun"
     echo "     --help | --usage"
     if [ $# -ne 0 ]; then
 	echo "     --repo=GITHUB|RCCS"
-	echo "     --all"
     fi
     exit 1
 }
 
 if ! [ -f /etc/redhat-release ]; then
-    echo "Unsupported Linux distribution"; exit 1
+    echo "Unsupported Linux distribution"
+    flag_error=true
 fi
 release=`cat /etc/redhat-release`
 case $release in
     *Linux*7.*) linux_version=7;;
     *Linux*8.*) linux_version=8;;
-    *)		echo "Unsupported Linux distribution"; exit 1;;
+    *)		echo "Unsupported Linux distribution: $release";
+		flag_error=true;;
 esac
 
 config_guess=`./config.guess`
 case $config_guess in
     x86_64-*)  arch=x86_64;;
     aarch64-*) arch=aarch64;;
-    *)	       echo "Unsupported architecture"; exit 1;;
+    *)	       echo "Unsupported architecture: $config_guess";
+		flag_error=true;;
 esac
 
-prefix=$cwd
-build=$cwd
-pip_version=$pip_default_version
-git="GITHUB"			# default
+prefix=""
+build=""
+pip_version=""
+repo=""
 flag_clean=false
-flag_all=false
 flag_dryrun=false
+flag_error=false
 
 while [ $# -gt 0 ]; do
     case $1 in
-	-*prefix)	shift; prefix=`realpath $1`;;
-	-*build)	shift; build=`realpath $1`;;
-	-*pip)		shift; pip_version=$1;;
-	-*git)		shift; git=$1;;
-	-*clean)	flag_clean=true;;
-	-*dry*)		flag_dryrun=true;;
-	-*all)		flag_all=true;;
+	--prefix=*)	prefix=`echo "$1" | cut -f 2 -d "="`;;
+	-p*)		shift; prefix=$1;;
+	--build=*)	build=`echo "$1" | cut -f 2 -d "="`;;
+	-b*)		shift; build=$1;;
+	--version=*)	pip_version=`echo "$1" | cut -f 2 -d "="`;;
+	-v*)		shift; pip_version=$1;;
+	--git=*)	repo=`echo "$1" | cut -f 2 -d "="`;;
+	-g*)		shift; repo=$1;;
+	-*c*)		flag_clean=true;;
+	-*d*)		flag_dryrun=true;;
         -*secret)	print_usage 1;;
-	-*help|-*usage) print_usage;;
-	*)		echo "Unknown option"; print_usage;;
+	-*h*|-*u*)	print_usage;;
+	*)		echo "Unknown option: $1"; print_usage;;
     esac
     shift
 done
@@ -69,11 +72,11 @@ done
 is_partof () {
     path0=$1
     path1=$2
-    if [ $path0 == $path1 ]; then return 0; fi
+    if [ $path0 == $path1 ]; then return true; fi
     case $path0 in
-	"${path1}/"*) return 0;;
+	"${path1}/"*) return true;;
     esac
-    return 1
+    return flase
 }
 
 build () {
@@ -92,40 +95,42 @@ build () {
 	echo " SUCCEEDED"
     else
 	echo " FAILED"
-	exit 1;
+	flag_error=true
     fi
-    return $?
+    return $exst
 }
 
 if $flag_clean; then
-    if is_partof $prefix $build ]; then
+    if is_partof $build $prefix; then
 	echo "--clean is disabled since BUILD includes PREFIX"
 	flag_clean=false
     fi
 fi
 
-if ! $flag_all; then
-    case "$pip_version" in
-	-1) pip_version=1;;		# hidden, deprecated version
-	2)  pip_vcrsion=2;;
-	3)  pip_vcrsion=3;;
-	*)  echo "Illegal PiP version"; print_usage;;
-    esac
+case "$pip_version" in
+    -1)      pip_version="1";;		# hidden, deprecated version
+    2|3)     true;;
+    all|ALL) pip_version="all";;
+    "")      pip_version="$pip_default_version";;
+    *)       echo "Illegal PiP version: $pip_version"; print_usage;;
+esac
+
+if [ $pip_version = "1" ]; then
+    if [ $linux_version = "8" ]; then
+	echo "RHEL/CentOS8 is not supported by PiP-v1"
+	flag_error=true
+    fi
 fi
 
-if [ $pip_version == 1 -a $linux_version == 8 ]; then
-    echo "RHEL/CentOS8 is not supported by pip-1"; exit 1
-fi
-
-case $git in
-    github|GITHUB)
+case $repo in
+    ""|github|GITHUB)
 	repo=https://github.com/RIKEN-SysSoft/;
 	pip="PiP";;
     rccs|RCCS)			# private repo
 	repo=git@git.sys.r-ccs.riken.jp:software/;
 	pip="PIP";;
     *)
-	echo "Unknown repo"; print_usage;;
+	echo "Unknown GIT repo: $repo"; print_usage;;
 esac
 
 pip_pip () {
@@ -133,23 +138,21 @@ pip_pip () {
     build=$2
     pip_version=$3
 
-    if $flag_all; then
+    if [ $pip_version == all ]; then
 	prefix_base=${prefix}/${arch}_redhat-${linux_version}_pip-${pip_version}
     else
 	prefix_base=${prefix}
     fi
 
-    if $flag_all; then
+    if [ $pip_version == all ]; then
 	build_base=${build}/${arch}_redhat-${linux_version}_pip-${pip_version}
     else
 	build_base=${build}
     fi
 
     if [ -d $build_base ]; then
-	echo "Build dir. exists"
+	echo "Build directory exists already: $build_base"
 	return 1;
-    else
-	mkdir -p $build_base
     fi
 
     repo_glibc=${repo}${pip}-glibc.git
@@ -166,6 +169,9 @@ pip_pip () {
 	branch_gdb=centos/gdb-7.6.1-94.el7.pip.branch # temporaly should be fixed !!
     fi
 
+    if $flag_error; then return 1; fi
+
+    echo;
     echo "Linux: " $linux_version
     echo "Arch:  " $arch
     echo "PiP:   " ${pip}-${pip_version}
@@ -175,18 +181,17 @@ pip_pip () {
 
     if $flag_dryrun; then return 0; fi
 
+    mkdir -p $build_base
     log_base=$build_base/log
-    if ! [ -d $log_base ]; then
-	mkdir $log_base
-    fi
+    mkdir $log_base
 
     cd $build_base
 
-    echo "[ PiP-Glibc ]"
+    echo; echo "[ PiP-Glibc ]"
     build_log=$log_base/pip-glibc-build.log
     echo -n > $build_log
     mkdir $build_base/${pip}-glibc
-    echo; echo "$begin_str Cloning PiP-glibc"
+    echo "$begin_str Cloning PiP-glibc"
     build $build_log git clone -b $branch_glibc $repo_glibc
 
     echo "$begin_str Building PiP-glibc"
@@ -201,10 +206,10 @@ pip_pip () {
 	echo "FAIL"; exit 1;
     fi
 
-    echo "[ PiP Lib. ]"
+    echo; echo "[ PiP Lib. ]"
     build_log=${log_base}/pip-lib-build.log
     echo -n > $build_log
-    echo; echo "$begin_str Cloning PiP lib."
+    echo "$begin_str Cloning PiP lib."
     build $build_log git clone -b $branch_pip $repo_pip
 
     echo "$begin_str Building PiP lib."
@@ -213,27 +218,27 @@ pip_pip () {
 	build $build_log ./configure \
 	    --prefix=${prefix_base}/pip-install \
 	    --with-glibc-libdir=${prefix_base}/glibc-install/lib
+	if [ $? -ne 0 ]; then exit 1; fi
 	build $build_log make
-	build $build_log make test
-	if [ $? -ne 0 ]; then
-	    echo "CHECK FAIL"; exit 1
-	fi
+	if [ $? -ne 0 ]; then exit 1; fi
+	build $build_log make check
+	if [ $? -ne 0 ]; then exit 1; fi
 	build $build_log make install
+	if [ $? -ne 0 ]; then exit 1; fi
 	build $build_log make check-installed
-	if [ $? -ne 0 ]; then
-	    echo "CHECK-INSTALLED FAIL"; exit 1
-	fi
+	if [ $? -ne 0 ]; then exit 1; fi
 	build $build_log make doc-install
+	if [ $? -ne 0 ]; then exit 1; fi
     )
 
     if ! [ -x ${prefix_base}/pip-install/bin/pipcc ]; then
 	echo "FAIL"; exit 1
     fi
 
-    echo "[ PiP-gdb ]"
+    echo; echo "[ PiP-gdb ]"
     build_log=${log_base}/pip-gdb-build.log
     echo -n > $build_log
-    echo; echo "$begin_str Cloning PiP-gdb"
+    echo "$begin_str Cloning PiP-gdb"
     build $build_log git clone -b $branch_gdb $repo_gdb
 
     echo "$begin_str Building PiP-gdb"
@@ -244,17 +249,39 @@ pip_pip () {
     )
 
     if ! [ -x ${prefix_base}/gdb-install/bin/pip-gdb ]; then
-	echo "FAIL"; exit 1
+	echo "FAIL"; exit 1;
     fi
 
     if $flag_clean; then
 	rm -f -r $build_base
     fi
-
-    return 0
 }
 
-if $flag_all; then
+if [ x"$prefix" == x ]; then
+    prefix="install"
+fi
+pfx=`realpath $prefix 2> /dev/null`
+if [ $? != 0 ]; then
+    echo "Invalid prefix path: $prefix"
+    flag_error=true
+fi
+prefix=$pfx
+
+if [ x"$build" == x ]; then
+    build="build"
+fi
+bld=`realpath $build 2> /dev/null`
+if [ $? != 0 ]; then
+    echo "Invalid build path: $build"
+    flag_error=true
+fi
+build=$bld
+
+if $flag_error; then
+    exit 1;
+fi
+
+if [ $pip_version == all ]; then
     if [ $linux_version == 7 ]; then
 	versions="1 2 3"
     else
@@ -262,10 +289,13 @@ if $flag_all; then
     fi
     for ver in $versions; do
 	pip_pip "$prefix" "$build" "$ver"
-	if [ $? != 0 ]; then exit $?; fi
     done
 else
     pip_pip "$prefix" "$build" "$pip_version"
 fi
 
-exit $?
+if $flag_error; then
+    exit 1
+else
+    exit 0
+fi
