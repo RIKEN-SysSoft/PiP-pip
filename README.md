@@ -25,15 +25,16 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
     $ ./pip-pip <OPTIONS>
 
 - `--prefix=<PREFIX_DIR>`
-  Specifying install directory. Default is the current directory.
+  Specifying install directory. Default is `--prefix=./install`.
 
 - `--build=<BUILD_DIR>`
-  Specifying build directory. Default is the current directory.
+  Specifying build directory. Default is `--build=./build`.
 
 - `--version=<PIP_VERSION>`
-  Specifying PiP version number. Currently, "2" or "3" is valid. "1"
-  (PiP-v1) is deprecated and unable to specify.  Refer to
-  [PiP](../../PiP) for the version differences.
+  Specifying PiP version number. Currently, "2" (PiP-v2) and "3"
+  (PiP-v3) are valid.  Default if "2."  PiP-v1 ("1") is deprecated and
+  unable to specify. Refer to [PiP](../../PiP) for the version
+  differences.
 
 - `--clean`
   Remove the specified build directory when the installation finishes

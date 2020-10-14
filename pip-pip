@@ -23,14 +23,14 @@ print_usage () {
 }
 
 if ! [ -f /etc/redhat-release ]; then
-    echo "Unsupported Linux distribution"
+    echo "ERROR: Unsupported Linux distribution"
     flag_error=true
 fi
 release=`cat /etc/redhat-release`
 case $release in
     *Linux*7.*) linux_version=7;;
     *Linux*8.*) linux_version=8;;
-    *)		echo "Unsupported Linux distribution: $release";
+    *)		echo "ERROR: Unsupported Linux distribution: $release";
 		flag_error=true;;
 esac
 
@@ -38,7 +38,7 @@ config_guess=`./config.guess`
 case $config_guess in
     x86_64-*)  arch=x86_64;;
     aarch64-*) arch=aarch64;;
-    *)	       echo "Unsupported architecture: $config_guess";
+    *)	       echo "ERROR: Unsupported architecture: $config_guess";
 		flag_error=true;;
 esac
 
@@ -46,6 +46,7 @@ prefix=""
 build=""
 pip_version=""
 repo=""
+flag_all=false
 flag_clean=false
 flag_dryrun=false
 flag_error=false
@@ -64,7 +65,7 @@ while [ $# -gt 0 ]; do
 	-*d*)		flag_dryrun=true;;
         -*secret)	print_usage 1;;
 	-*h*|-*u*)	print_usage;;
-	*)		echo "Unknown option: $1"; print_usage;;
+	*)		echo "ERROR: Unknown option: $1"; print_usage;;
     esac
     shift
 done
@@ -102,25 +103,22 @@ build () {
 
 if $flag_clean; then
     if is_partof $build $prefix; then
-	echo "--clean is disabled since BUILD includes PREFIX"
+	echo "WARNING: --clean is disabled since BUILD includes PREFIX"
 	flag_clean=false
     fi
 fi
 
 case "$pip_version" in
-    -1)      pip_version="1";;		# hidden, deprecated version
+    -1) pip_version="1";		# hidden, deprecated version
+	if [ $linux_version = "8" ]; then
+	    echo "ERROR: RHEL/CentOS8 is not supported by PiP-v1";
+	    flag_error=true;
+	fi;;
     2|3)     true;;
-    all|ALL) pip_version="all";;
-    "")      pip_version="$pip_default_version";;
-    *)       echo "Illegal PiP version: $pip_version"; print_usage;;
+    all|ALL) flag_all=true; pip_version="all";;
+    "")      pip_version=$pip_default_version;;
+    *)       echo "ERROR: Illegal PiP version: $pip_version"; print_usage;;
 esac
-
-if [ $pip_version = "1" ]; then
-    if [ $linux_version = "8" ]; then
-	echo "RHEL/CentOS8 is not supported by PiP-v1"
-	flag_error=true
-    fi
-fi
 
 case $repo in
     ""|github|GITHUB)
@@ -130,36 +128,33 @@ case $repo in
 	repo=git@git.sys.r-ccs.riken.jp:software/;
 	pip="PIP";;
     *)
-	echo "Unknown GIT repo: $repo"; print_usage;;
+	echo "ERROR: Unknown GIT repo: $repo";
+	flag_error=true;
 esac
 
 pip_pip () {
     prefix=$1
     build=$2
-    pip_version=$3
+    pip_ver=$3
 
-    if [ $pip_version == all ]; then
-	prefix_base=${prefix}/${arch}_redhat-${linux_version}_pip-${pip_version}
+    if $flag_all; then
+	build_base=${build}/${arch}_redhat-${linux_version}_pip-${pip_ver}
+	prefix_base=${prefix}/${arch}_redhat-${linux_version}_pip-${pip_ver}
     else
+	build_base=${build}
 	prefix_base=${prefix}
     fi
 
-    if [ $pip_version == all ]; then
-	build_base=${build}/${arch}_redhat-${linux_version}_pip-${pip_version}
-    else
-	build_base=${build}
-    fi
-
     if [ -d $build_base ]; then
-	echo "Build directory exists already: $build_base"
-	return 1;
+	echo "ERROR: Build directory exists already: $build_base"
+	flag_error=true
     fi
 
     repo_glibc=${repo}${pip}-glibc.git
     repo_pip=${repo}${pip}.git
     repo_gdb=${repo}${pip}-gdb.git
 
-    branch_pip=pip-$pip_version
+    branch_pip=pip-$pip_ver
 
     if [ $linux_version == 7 ]; then
 	branch_glibc=centos/glibc-2.17-260.el7.pip.branch
@@ -169,17 +164,22 @@ pip_pip () {
 	branch_gdb=centos/gdb-7.6.1-94.el7.pip.branch # temporaly should be fixed !!
     fi
 
-    if $flag_error; then return 1; fi
+    if $flag_all; then
+	echo "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=";
+    fi
+    echo "PiP:    ${pip}-v${pip_ver}"
+    echo "Linux:  $linux_version [$release]"
+    echo "Arch:   $arch [$config_guess]"
+    echo "Repo:   $repo"
+    echo " Branch PiP:   $branch_pip"
+    echo "        Glibc: $branch_glibc"
+    echo "        GDB:   $branch_gdb"
+    echo "Build:  $build_base"
+    echo "Prefix: $prefix_base"
 
-    echo;
-    echo "Linux: " $linux_version
-    echo "Arch:  " $arch
-    echo "PiP:   " ${pip}-${pip_version}
-    echo "Repo:  " $repo
-    echo "Build: " $build_base
-    echo "Prefix:" $prefix_base
-
-    if $flag_dryrun; then return 0; fi
+    if $flag_error;  then return 1; fi
+    if $flag_dryrun; then return 0;  fi
+    echo "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=";
 
     mkdir -p $build_base
     log_base=$build_base/log
@@ -262,7 +262,7 @@ if [ x"$prefix" == x ]; then
 fi
 pfx=`realpath $prefix 2> /dev/null`
 if [ $? != 0 ]; then
-    echo "Invalid prefix path: $prefix"
+    echo "ERROR: Invalid prefix path: $prefix"
     flag_error=true
 fi
 prefix=$pfx
@@ -272,7 +272,7 @@ if [ x"$build" == x ]; then
 fi
 bld=`realpath $build 2> /dev/null`
 if [ $? != 0 ]; then
-    echo "Invalid build path: $build"
+    echo "ERROR: Invalid build path: $build"
     flag_error=true
 fi
 build=$bld
@@ -281,7 +281,7 @@ if $flag_error; then
     exit 1;
 fi
 
-if [ $pip_version == all ]; then
+if $flag_all; then
     if [ $linux_version == 7 ]; then
 	versions="1 2 3"
     else
