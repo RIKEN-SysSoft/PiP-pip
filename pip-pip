@@ -1,546 +1,716 @@
-#!/bin/sh
+#!/usr/bin/env python3
 
-cmd=$0
-cwd=`pwd`
+import datetime
+import time
+import argparse
+import shutil
+import os
+import sys
+import subprocess as sp
 
-pip_default_version=2
+log_dir     = ''
+msg_enter   = '>>>'
+msg_exit    = '<<<'
+msg_error   = '<ER'
+msg_prefix  ='---'
+msg_prefix1 ='###'
+err_prefix  ='ERROR:'
+warn_prefix ='WARNING:'
+sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 
-begin_str=">>>"
-dash="-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+sudo_prefix  = []
+query_prefix = False
+flag_multi   = False
+dryrun       = False
 
-print_usage () {
-    echo "`basename $cmd` --how=<HOW> [<OPTIONS>]"
-    echo "   OPTIONS:"
-    echo "     --how=yum|docker|spack|github"
-    echo "     --version=2|3         # PiP version"
-    echo "     --prefix=<PREFIX_DIR> # installing dir (git, spack)"
-    echo "     --work=<WORKING_DIR>  # working dir"
-    echo "     --clean               # remove working dir. when succeeded"
-    echo "     --sudo                # allow sudo (yum, docker)"
-    echo "     --dryrun              # dry run"
-    echo "     --help | --usage      # show usage"
-    exit 1
-}
+def redhat_version():
+    with open( '/etc/redhat-release', mode='r' ) as f:
+        l = f.readline().split().pop(3).split('.').pop(0)
+    return int( l )
 
-dot_exec=""
-if ! [ -x ./dot-exec ]; then
-    make
-    if [ -x ./dot-exec ]; then
-	dot_exec=`dirname $cmd`/dot-exec
-    fi
-fi
+def cpu_arch():
+    return sp.check_output( [ 'uname', '-m' ] ).decode().split().pop(0)
 
-if ! [ -f /etc/redhat-release ]; then
-    echo "ERROR: Unsupported Linux distribution"
-    flag_error=true
-fi
-release=`cat /etc/redhat-release`
-case $release in
-    *Linux*7.*) linux_version=7;;
-    *Linux*8.*) linux_version=8;;
-    *)		echo "ERROR: Unsupported Linux distribution: $release";
-		flag_error=true;;
-esac
+def log( list, log_fs, newline ):
+    last = list[-1]
+    for msg in list:
+        if msg != last:
+            if not args.quiet:
+                print( msg, end=' ' )
+            if not dryrun:
+                print( msg, end=' ', file=log_fs )
+        else:
+            if newline:
+                if not args.quiet:
+                    print( msg, flush=True )
+                if not dryrun:
+                    print( msg, flush=True, file=log_fs )
+            else:
+                if not args.quiet:
+                    print( msg, end='', flush=True )
+                if not dryrun:
+                    print( msg, end='', flush=True, file=log_fs )
 
-config_guess=`./config.guess`
-case $config_guess in
-    x86_64-*)  arch=x86_64;;
-    aarch64-*) arch=aarch64;;
-    *)	       echo "ERROR: Unsupported architecture: $config_guess";
-		flag_error=true;;
-esac
+def is_privileged( log_fs ):
+    global sudo_query, error
 
-prefix=""
-work=""
-pip_version=""
-how=""
-sudo=""
-flag_any=false
-flag_all=false
-flag_sudo=false
-flag_clean=false
-flag_dryrun=false
-flag_error=false
+    if os.environ['USER'] == 'root':
+        return True
+    able_to_sudo = False
+    sudo_rc = sp.call( [ 'sudo',
+                         '-S',
+                         'true',
+                         '<',
+                         '/dev/null',
+                         '>',
+                         '/dev/null/',
+                         '2>&1' ] )
+    if sudo_rc == 0:
+        able_to_sudo = True
+    if args.sudo:
+        if able_to_sudo:
+            sudo_prefix = [ 'sudo', '/bin/sh', '-c' ]
+            return True
+        else:
+            error = True
+            if not sudo_query:
+                sudo_query = True
+                log( [ err_prefix, '--sudo option is required' ], log_fs, True )
+    else:
+        if not sudo_query:
+            sudo_query = True
+            if able_to_sudo:
+                log( [ err_prefix, 'user is not sudo-able' ], log_fs, True )
+            else:
+                log( [ err_prefix, '--sudo option is required and user is not sudo-able' ],
+                     log_fs, True )
+        error = True
+    return False
 
-while [ $# -gt 0 ]; do
-    case $1 in
-	--prefix=*)	prefix=`echo "$1" | cut -f 2 -d "="`;;
-	-p*)		shift; prefix=$1;;
-	--work=*)	work=`echo "$1" | cut -f 2 -d "="`;;
-	-b*)		shift; work=$1;;
-	--version=*)	pip_version=`echo "$1" | cut -f 2 -d "="`;;
-	-v*)		shift; pip_version=$1;;
-	--how=*)	how=`echo "$1" | cut -f 2 -d "="`;;
-	-*how)		shift; how=$1;;
-	-c*|--clean)	flag_clean=true;;
-	-d*|--dry|--dryrun) flag_dryrun=true;;
-	--help|-*usage*)	print_usage;;
-	*)		echo "ERROR: Unknown option: $1"; print_usage;;
-    esac
-    shift
-done
+cmd = sys.argv[0]
 
-is_privileged () {
-    if [ x"$USER" == root ]; then
-	return 0
-    fi
+parser = argparse.ArgumentParser( description='PiP package installing program',
+                                  add_help = True )
+parser.add_argument( '--how', '-H',
+                     help    = 'Specifying how to install (yum|docker|spack|github)',
+                     type    = str,
+                     action  = 'append' )
+parser.add_argument( '--version', '-v',
+                     help    = 'Specifying PiP version (2 or 3)',
+                     type    = str,
+                     action  = 'append' )
+parser.add_argument( '--prefix', '-p',
+                     help    = 'Install directory (spack, github)',
+                     type    = str,
+                     default = 'install',
+                     nargs   = '?' )
+parser.add_argument( '--work', '-w',
+                     help    = 'Working directory (required in all cases)',
+                     type    = str,
+                     default = 'work',
+                     nargs   = '?' )
+parser.add_argument( '--clean', '-c',
+                     help    = 'Cleanup working directory when succeeded',
+                     action  = 'store_true' )
+parser.add_argument( '--sudo', '-s',
+                     help    = 'allow sudo (yum, docker)',
+                     action  = 'store_true' )
+parser.add_argument( '--dryrun', '-d',
+                     help    = 'dry run',
+                     action  = 'store_true' )
+parser.add_argument( '--force', '-f',
+                     help    = 'force to delete work directory, if exists',
+                     action  = 'store_true' )
+parser.add_argument( '--quiet', '-q',
+                     help    = 'quiet mode',
+                     action  = 'store_true' )
+parser.add_argument( '--noglibc', '-noglibc',
+                     help    = 'Do not build PiP-glibc and PiP_gdb (github)',
+                     action  = 'store_true' )
+parser.add_argument( '--nogdb', '-nogdb',
+                     help    = 'Do not build PiP_gdb (github)',
+                     action  = 'store_true' )
 
-    able_to_sudo=false;
-    if sudo -S true < /dev/null; then
-	able_to_sudo=true;
-    fi
+args = parser.parse_args()
 
-    if $able_to_sudo; then
-	if $flag_sudo; then
-	    sudo="sudo "
-	    return 0
-	else
-	    echo "ERROR: --sudo option is required"
-	fi
-    else
-	if $flag_sudo; then
-	    echo "ERROR: $USER is not sudo-able"
-	else
-	    echo "ERROR: --sudo option is required and $USER is not sudo-able"
-	fi
-    fi
-    sudo=""
-    return 1
-}
+dryrun = args.dryrun
 
-is_upper () {
-    path0=$1
-    path1=$2
-    if [ $path0 == $path1 ]; then return true; fi
-    case $path0 in
-	"${path1}/"*) return true;;
-    esac
-    return flase
-}
+## check how
+how_list = set( args.how )
+how_allowed = [ 'yum', 'docker', 'spack', 'github', 'git@rccs' ]
+if 'all' in how_list or 'ALL' in how_list:
+    flag_multi = True
+    how_list = how_allowed
+elif how_list == []:
+    how_list = [ 'github' ]
+else:
+    errlist = []
+    howlist = []
+    for h in how_list:
+        if h in how_allowed:
+            howlist.append( h )
+        else:
+            errlist.append( h )
+    if errlist != []:
+        print( err_prefix, errlist, 'is(are) not acceptable value(s) of --how' )
+        parser.print_help()
+        sys.exit( 1 )
+    if howlist == []:
+        parser.print_help()
+        sys.exit( 1 )
+    how_list = howlist
 
-log_echo () {
-    logfile=$1
-    shift
-    if ! $flag_dryrun; then
-	echo "$@" >> $logfile
-	echo "$@"
-    else
-	echo "DRYRUN: $@"
-    fi
-}
+if len( how_list ) > 1:
+    flag_multi = True
 
-work_notyet () {
-    logfile=$1
-    shift
-    log_echo $logfile "${sudo}$@ -- TBI"
-}
+## check Linux distribution and version
+version = sorted( set( args.version ) )
+redhat_ver = redhat_version()
+if redhat_ver != 7 and redhat_ver != 8:
+    print( err_prefix, 'RHEL', redhat_ver, 'is not supported' )
+    sys.exit( 1 )
 
-work () {
-    logfile=$1
-    shift
-    log_echo $logfile $@
-    if ! $flag_dryrun; then
-	exst=0
-	if [ x"$dot_exec" != x ]; then
-	    $dot_exec ${sudo}$@ >> $logfile 2>&1 &
-	    exst=$?
-	else
-	    ${sudo}$@ >> $logfile 2>&1 &
-	    pid=$!
-	    while kill -0 $pid > /dev/null 2>&1; do
-		sleep 1
-		echo -n "."
-	    done
-	    wait $pid
-	fi
-	exst=$?
-	if [ $exst == 0 ]; then
-	    log_echo $logfile " SUCCEEDED"
-	else
-	    log_echo $logfile " FAILED"
-	    flag_error=true
-	fi
-    fi
-    return $exst
-}
+## Check PiP version
+pip_vers = []
+if 'ALL' in version:
+    if redhat_ver == 7:
+        pip_vers = [ 1, 2, 3 ]
+    else:
+        pip_vers = [ 2, 3 ]
+elif 'all' in version:
+    pip_vers = [ 2, 3 ]
+elif version == []:
+    pip_vers = [ 2 ]
+else:
+    ver_allowed = [ -1, 2, 3 ]
+    errlist     = []
+    for ver_str in args.version:
+        ver = int( ver_str )
+        if ver not in ver_allowed:
+            errlist.append( ver )
+        else:
+            pip_vers.append( abs( ver ) )
+    if errlist != []:
+        print( err_prefix, errlist, 'is(are) not acceptable value(s) of --version' )
+        parser.print_help()
+        sys.exit( 1 )
 
-change_dir () {
-    if ! $flag_dryrun; then cd $1; fi
-}
+if len( pip_vers ) > 1:
+    flag_multi = True
 
-make_dir () {
-    if ! $flag_dryrun; then mkdir $@; fi
-}
+# check arch
+arch = cpu_arch()
+if arch != 'x86_64' and arch != 'aarch64':
+    print( err_prefix, arch, 'is not supported by PiP' )
+    sys.exit( 1 )
 
-log_file () {
-    log_dir=$1
-    log_file=$2
-    logfile=${log_dir}/${log_file}
+def make_directory( dir ):
+    if not dryrun:
+        try:
+            os.mkdir( dir )
+            return dir
+        except Exception as e:
+            print( err_prefix, e )
+            return None
+    else:
+        return dir
 
-    if ! $flag_dryrun; then
-	error=false
-	if ! [ -d $log_dir ]; then
-	    if ! make_dir -p $log_dir > /dev/null 2>&1; then
-		error=true
-	    fi
-	fi
-	if ! $error; then
-	    hostname -f >  $logfile 2>&1
-	    date        >> $logfile 2>&1
-	    echo $dash  >> $logfile 2>&1
-	else
-	    flag_error=true
-	fi
-    fi
-    echo $logfile	# return
-}
+# check and create prefix dir
+def check_prefix( prefix):
+    global query_prefix
 
-case "$pip_version" in
-    -1) pip_version="1";		# hidden, deprecated version
-	if [ $linux_version = "8" ]; then
-	    echo "ERROR: RHEL8/CentOS8 is not supported by PiP-v1";
-	    flag_error=true;
-	fi;;
-    2|3) true;;
-    all|ALL) flag_all=true;;
-    "")  pip_version=$pip_default_version;;
-    *)   echo "ERROR: Illegal PiP version: $pip_version"; print_usage;;
-esac
+    prefix = os.path.realpath( os.path.expanduser( prefix ) )
+    if dryrun:
+        return prefix
+    if os.path.isfile( prefix ):
+        print( err_prefix, prefix, 'is not a directory' )
+        return None
+    if os.path.isdir( prefix ):
+        if not args.force and not query_prefix:
+            if not args.quiet:
+                print( warn_prefix, 'Prefix directory already exists: ', prefix )
+            while True:
+                try:
+                    choice = input( "Are you sure to install in prefix directory? 'yes' or 'no' [y/N]: ").lower()
+                except:
+                    print( '' )
+                    sys.exit( 1 )
 
-case "$how" in
-    yum)			how=yum;;
-    docker|DOCKER)		how=docker;;
-    spack|SPACK)		how=spack;;
-    git|GIT|github|GITHUB)	how=github;;
-    git:rccs|git-rccs)		how=rccs;;
-    all|ALL)			flag_any=true;;
-    "")				echo "ERROR: --how option must be specified";
-				print_usage;;
-    *)				echo "ERROR: Unknown --how option: $how";
-				print_usage;;
-esac
+                if choice in [ 'y', 'ye', 'yes' ]:
+                    query_prefix = True
+                    break
+                elif choice in [ 'n', 'no' ]:
+                    sys.exit( 1 )
+    return prefix
 
-pip_build () {
-    repo=$1
-    version=$2
+def create_prefix( prefix, how, ver ):
+    global flag_multi
+    if not flag_multi:
+        pdir = prefix
+    else:
+        pdir = os.path.join( prefix,
+                             arch + '_' +
+                             'redhat-' + str( redhat_ver ) + '_' +
+                             how + '_' +
+                             'pip-' + str( ver ) )
+    try:
+        os.makedirs( pdir, exist_ok=True )
+        return pdir
+    except Exception as e:
+        print( err_prefix, e )
+        return None
 
-    case $repo in
-	github)   pip="PiP";
-	          git_repo="https://github.com/RIKEN-SysSoft";;
-	rccs)     pip="PIP";
-	          git_repo="git@git.sys.r-ccs.riken.jp:software";;
-	*)	  echo "ERROR: Unknown repo: $repo";
-	          flag_error=true;
-		  return 1;;
-    esac
+def delete_work_dir( wdir ):
+    if not args.quiet:
+        if not args.quiet:
+            print( 'Deleting existing work directory (', wdir, ') ...' )
+    try:
+        shutil.rmtree( wdir )
+    except Exception as e:
+        print( err_prefix, e )
+        sys.exit( 1 )
 
-    if $flag_all; then
-	work_base=${work}/${repo}-${arch}_redhat-${linux_version}_pip-${version}
-	prefix_base=${prefix}/${repo}-${arch}_redhat-${linux_version}_pip-${version}
-    else
-	work_base=${work}
-	prefix_base=${prefix}
-    fi
+# check and create work dir
+def check_work( wdir ):
+    wdir = os.path.realpath( os.path.expanduser( wdir ) )
+    if os.path.isfile( wdir ):
+        print( err_prefix, wdir, 'is not a directory' )
+        return None, None
+    if os.path.isdir( wdir ):
+        if not args.force:
+            print( warn_prefix, 'Work directory already exists: ', wdir )
+            while True:
 
-    repo_glibc=${git_repo}/${pip}-glibc.git
-    repo_pip=${git_repo}/${pip}.git
-    repo_gdb=${git_repo}/${pip}-gdb.git
+                try:
+                    choice = input( "Delete work directory before install? 'yes' or 'no' [y/N]: ").lower()
+                except:
+                    print( '' )
+                    sys.exit( 1 )
 
-    branch_pip=pip-$version
+                if choice in ['y', 'ye', 'yes']:
+                    break
+                elif choice in [ 'n', 'no' ]:
+                    sys.exit( 1 )
+        delete_work_dir( wdir )
+    return wdir
 
-    if [ $linux_version == 7 ]; then
-	branch_glibc=centos/glibc-2.17-260.el7.pip.branch
-	branch_gdb=centos/gdb-7.6.1-94.el7.pip.branch
-    else
-	branch_glibc=centos/glibc-2.28-72.el8_1.1.pip.branch
-	branch_gdb=centos/gdb-7.6.1-94.el7.pip.branch # temporaly should be fixed !!
-    fi
+def create_work( work, how, ver ):
+    global arch, redhat_ver
 
-    if [ -d $work_base ]; then
-	echo "ERROR: Work dir. exists already: $work_base"
-	if ! $flag_dryrun; then
-	    flag_error=true
-	    return 1
-	fi
-    fi
-    make_dir -p $work_base
-    change_dir $work_base
+    wdir = os.path.join( work,
+                         arch + '_' +
+                         'redhat-' + str( redhat_ver ) + '_' +
+                         how + '_' +
+                         'pip-' + str( ver ) )
+    try:
+        log_dir = os.path.join( wdir, 'log' )
+        os.makedirs( log_dir, exist_ok=True )
+        log_file = os.path.join( log_dir, 'pip-pip.log' )
+    except Exception as e:
+        print( err_prefix, e )
+        return None, None
+    return wdir, log_file
 
-    log_base=$work_base/log
-    build_log=`log_file $log_base pip-glibc-build.log`
+def check_file( file ):
+    if dryrun:
+        return True
+    return os.path.isfile( file )
 
-    log_echo $build_log $dash
-    log_echo $build_log "PiP:        ${pip}-v${version}"
-    log_echo $build_log "Linux:      $linux_version [$release]"
-    log_echo $build_log "Arch:       $arch [$config_guess]"
-    log_echo $build_log "Repo PiP:   $repo_pip / $branch_pip"
-    log_echo $build_log "     Glibc: $repo_glibc / $branch_glibc"
-    log_echo $build_log "     GDB:   $repo_gdb / $branch_gdb"
-    log_echo $build_log "Work:       $work_base"
-    log_echo $build_log "Prefix:     $prefix_base"
-    log_echo $build_log $dash
+def check_command( command ):
+    if shutil.which( command  ) == None:
+        return False
+    return True
 
-    log_echo $build_log "[ PiP-Glibc ]"
+def do_poll( proc, dots, tmax, intval, log_fs ):
+    delta = 0.2
+    t = 0.0
+    i = 0
 
-    make_dir $work_base/${pip}-glibc
-    log_echo $build_log "$begin_str Cloning PiP-glibc"
-    work $build_log git clone -b $branch_glibc $repo_glibc
+    while True:
+        if not args.quiet:
+            if t >= i:
+                i = i + intval
+                print( dots, end='', flush=True )
+            elif t > tmax:
+                return None
+            time.sleep( delta )
+            t = t + delta
 
-    log_echo $build_log "$begin_str Building PiP-glibc"
-    glibc_builddir=${work_base}/glibc-build
-    make_dir $glibc_builddir
-    (
-	change_dir $glibc_builddir
-	work $build_log ../${pip}-glibc/build.sh ${prefix_base}/glibc-install
-    )
-    if ! $flag_dryrun; then
-	if ! [ -x ${prefix_base}/glibc-install/bin/piplnlibs.sh ]; then
-	    log_echo $build_log "FAIL"
-	    flag_error=true
-	fi
-    fi
+        ret = proc.poll()
+        if ret is None:
+            continue
+        if ret == 0:
+            log( [ ' OK' ], log_fs, True )
+            return True
+        else:
+            log( [ ' NG' ], log_fs, True )
+            return False
 
-    build_log=`log_file $log_base pip-lib-build.log`
-    log_echo $build_log "[ PiP Lib. ]"
+def execute( chdir, cmd, log_f, log_fs, tbi ):
+    global error
 
-    log_echo $build_log "$begin_str Cloning PiP lib."
-    work $build_log git clone -b $branch_pip $repo_pip
+    if dryrun:
+        if chdir == None:
+            log( [ '[DRY]' ] + cmd, log_fs, True )
+        else:
+            log( [ '[DRY]' ] + cmd, log_fs, True )
+    elif not tbi:
+        if chdir == None:
+            log( [ '[TBI]' ] + cmd, log_fs, True )
+        else:
+            log( [ '[TBI]' ] + cmd, log_fs, True )
+    else:
+        ret = -1
+        if error:
+            log( [ msg_prefix ] + cmd + [ '-- execution skipped due to prev. error' ],
+                 log_fs, True )
+            error = True
+            return False
+        try:
+            cmd_redirect = cmd + [ '>>', log_f, '2>&1', '<', '/dev/null' ]
+            if chdir == None:
+                log( [ msg_prefix ] + cmd, log_fs, False )
+                cmd_str = ' '.join( cmd_redirect )
+            else:
+                log( [ msg_prefix ] + cmd, log_fs, False )
+                cmd_chdir = [ 'cd', chdir, ';' ] + cmd_redirect
+                cmd_str   = ' '.join( cmd_chdir )
+            proc = sp.Popen( [ '/bin/sh', '-c', cmd_str ], close_fds=True )
 
-    log_echo $build_log "$begin_str Building PiP lib."
-    (
-	change_dir $pip
-	work $build_log ./configure \
-	    --prefix=${prefix_base}/pip-install \
-	    --with-glibc-libdir=${prefix_base}/glibc-install/lib
-	if [ $? -ne 0 ]; then return 1; fi
-	if ! work $build_log make;                 then return 1; fi
-	if ! work $build_log make check;           then return 1; fi
-	if ! work $build_log make install;         then return 1; fi
-	if ! work $build_log make check-installed; then return 1; fi
-	if ! work $build_log make doc-install;     then return 1; fi
-    )
-    if ! $flag_dryrun; then
-	if ! [ -x ${prefix_base}/pip-install/bin/pipcc ]; then
-	    log_echo $build_log "FAIL"
-	    flag_error=true
-	fi
-    fi
+            if not args.quiet:
+                print( ' ', end='', flush=True )
+            inc = [ ( '.',   10,   1 ),
+                    ( '-',   30,   3 ),
+                    ( '+',  100,  10 ),
+                    ( '=',  300,  30 ) ]
+            for ( dot, tmax, inc ) in inc:
+                ret = do_poll( proc, dot, tmax, inc, log_fs )
+                if ret == None:
+                    continue
+                elif ret == False:
+                    error = True
+                    time.sleep( 2 ) # wait for stdout/stderr flushing
+                return ret
+            while True:
+                ret = do_poll( proc, '*', 10000, 100, log_fs )
+                if ret == None:
+                    continue
+                elif ret == False:
+                    error = True
+                    time.sleep( 2 ) # wait for stdout/stderr flushing
+                return ret
+        except Exception as e:
+            log( [ '\nException:', e ], log_fs, True )
+            error = True
+            return False
 
-    build_log=`log_file $log_base pip-gdb-build.log`
-    log_echo $build_log "[ PiP-gdb ]"
+def install_yum( pip_ver, log_f, log_fs ):
+    yum_pip = 'process-in-process-v' + str( pip_ver )
 
-    log_echo $build_log "$begin_str Cloning PiP-gdb"
-    work $build_log git clone -b $branch_gdb $repo_gdb
+    retuple = ( 'yum', yum_pip, '' )
+    log( [ msg_enter, 'Yum install', yum_pip ], log_fs, True )
 
-    log_echo $build_log "$begin_str Building PiP-gdb"
-    (
-	change_dir ${pip}-gdb
-	work $build_log ./build.sh --prefix=${prefix_base}/gdb-install \
-	    --with-pip=${prefix_base}/pip-install
-    )
-    if ! $flag_dryrun; then
-	if ! [ -x ${prefix_base}/gdb-install/bin/pip-gdb ]; then
-	    log_echo $build_log "FAIL"
-	    flag_error=true
-	fi
-    fi
+    if not check_command( 'yum' ):
+        log( [ err_prefix, 'Unable to find YUM' ], log_fs, True )
+        return False, retuple
+    if not is_privileged( log_fs ):
+        return False, retuple
+    if execute( None, sudo_prefix + [ 'yum', 'reinstall', '-y', yum_pip ],
+                log_f, log_fs, False ):
+        return True, retuple
+    return False, retuple
 
-    if $flag_error; then return 1; fi
-    return 0
-}
+def install_docker( pip_ver, log_f, log_fs ):
+    docker_pip = 'rikenpip/pipv' + str( pip_ver )
 
-pip_git () {
-    repo=$1
+    retuple = ( 'docker', docker_pip, '' )
+    log( [ msg_enter, 'Docker install', docker_pip ], log_fs, True )
 
-    if ! which git > /dev/null 2>&1; then
-	echo "ERROR: Unable to find 'git' command"
-	flag_error=true
-	return 1
-    fi
+    if not check_command( 'docker' ):
+        log( [ err_prefix, 'Unable to find DOCKER' ], log_fs, True )
+        return False, retuple
+    if not is_privileged( log_fs ):
+        return False, ( 'docker', docker_pip, '' )
+    if not execute( None,
+                    sudo_prefix + [ 'docker', 'inspect', docker_pip ],
+                    log_f, log_fs, False ):
+        return False, retuple
+    log( [ msg_prefix1, 'Removing existing image', docker_pip ], log_fs, True )
+    if not execute( None,
+                    sudo_prefix + [ 'docker', 'rmi', docker_pip ],
+                    log_f, log_fs, False ):
+        log( [ err_prefix, 'Failed to remove existing image', coker_pip ],
+             log_fs, True )
+        return False, retuple
+    log( [ msg_prefix1, 'Pulling existing image', docker_pip ], log_fs, True )
+    if execute( None,
+                sudo_prefix + [ 'docker', 'pull', docker_pip ],
+                log_f, log_fs, False ):
+        return True, retuple
+    return False, retuple
 
-    if $flag_all; then
-	if [ $linux_version == 7 ]; then
-	    versions="1 2 3"
-	else
-	    versions="2 3"
-	fi
-	for ver in $versions; do
-	    pip_build $repo $ver
-	    if [ $? -ne 0 ]; then flag_error=true; fi
-	done
-    else
-	pip_build $repo $pip_version
-	if [ $? -ne 0 ]; then flag_error=true; fi
-    fi
-}
+def install_spack( prefix, how, pip_ver, work_dir, log_f, log_fs ):
+    spack_pip = 'process-in-process@', str( pip_ver )
 
-do_docker () {
-    logfile=$1
-    pip_ver=$2
-    image_name=rikenpip/pipv${pip_ver}
-    if ${sudo}docker inspect $image_name > /dev/null 2>&1; then
-	log_echo $logfile "$begin_str Docker removing $image_name"
-	work_notyet $logfile docker rmi $image_name
-    fi
-    log_echo $logfile "$begin_str Docker pulling $image_name"
-    work_notyet $logfile docker pull $image_name
-    return $?
-}
+    retuple = ( 'spack', spack_pip, '' )
+    log( [ msg_enter, 'Spack install', spack_pip ], log_fs, True )
 
-pip_docker () {
-    if ! which docker > /dev/null 2>&1; then
-	echo "ERROR: Unable to find 'docker' command"
-	flag_error=true
-	return 1
-    fi
-    if ! is_privileged; then
-	if ! $flag_dryrun; then
-	    echo "Docker installation is skipped due to the error"
-	    flag_error=true
-	    return 1
-	fi
-    fi
+    if not check_command( 'spack' ):
+        if not check_command( 'git' ):
+            log( [ err_prefix, 'Unable to find GIT command (required to install Spack)' ],
+                 log_fs, True )
+            return False, retuple
+        prefix_dir = create_prefix( prefix, how, pip_ver )
+        if prefix_dir == None:
+            return False, retuple
+        log( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log_fs, True )
+        if not execute( prefix_dir,
+                        [ 'git', 'clone', 'https://github.com/spack/spack.git' ],
+                        log_f,
+                        log_fs,
+                        False ):
+            return False, retuple
+        spack_path = os.path.join( prefix_dir, 'spack', 'bin', 'spack' )
+    else:
+        spack_path = 'spack'
 
-    docker_log=`log_file $work/log pip-docker.log`
-    if $flag_all; then
-	if [ $linux_version == 7 ]; then
-	    versions="1 2 3"
-	else
-	    versions="2 3"
-	fi
-	for ver in $versions; do
-	    do_docker $docker_log $ver
-	    if [ $? -ne 0 ]; then
-		flag_error=true
-	    fi
-	done
-    else
-	do_docker $docker_log $ver
-	if [ $? -ne 0 ]; then
-	    flag_error=true
-	fi
-    fi
-    sudo=""
-}
+    retuple = ( 'spack', spack_pip, spack_path )
+    if execute( None, [ spack_path, 'find', spack_pip ], log_f, log_fs, False ):
+        log( [ msg_prefix1, 'Uninstalling', spack_pip ], log_fs, True )
+        if not execute( [ spack_path, 'uninstall', spack_pip ], log_f, log_fs, False ):
+            return False, retuple
+    log( [ msg_prefix1, 'Installing', spack_pip ], log_fs, True )
+    if execute( None, [ spack_path, 'install', '--test=all',  spack_pip ], log_f, log_fs, False ):
+        return True, retuple
+    return False, retuple
 
-pip_spack () {
-    spack_log=`log_file $work/log pip-spack.log`
-    pckg="process-in-process"
-    if which spack > /dev/null 2>&1; then
-	spack="spack"
-    else
-	if ! [ -d $prefix ]; then
-	    make_dir -p $prefix
-	fi
-	change_dir $prefix
-	log_echo $spack_log "$begin_str Cloning Spack -- $prefix"
-	work_notyet $spack_log git clone https://github.com/spack/spack.git
-	spack=$prefix/spack/bin/spack
-    fi
-    if $flag_all; then
-	versions="2 3"
-	for ver in $versions; do
-	    if $spack find $pckg@$ver > /dev/null 2>&1; then
-		log_echo $spack_log "$begin_str Spack uninstalling existing $pckg@$ver"
-		work_notyet $spack_log $spack uninstall $pckg@$ver
-	    fi
-	    log_echo $spack_log "$begin_str Spack installing $pckg@$ver"
-	    work_notyet $spack_log $spack install --test=all $pckg@$ver
-	done
-    else
-	if $spack find $pckg@$pip_version > /dev/null 2>&1; then
-	    log_echo $spack_log "$begin_str Spack uninstalling existing $pckg@$pip_version"
-	    work_notyet $spack_log $spack uninstall $pckg@$pip_version
-	fi
-	log_echo $spack_log "$begin_str Spack Installing $pckg@$pip_version"
-	work_notyet $spack_log $spack install --test=all $pckg@$pip_version
-    fi
-}
+def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
+    global redhat_ver
 
-pip_yum () {
-    if ! is_privileged; then
-	if ! $flag_dryrun; then
-	    echo "Yum installation is skipped due to the error"
-	    flag_error=true
-	    return 1
-	fi
-    fi
-    yum_log=`log_file $work/log pip-yum.log`
-    if $flag_all; then
-	versions="1 2 3"
-	for ver in $versions; do
-	    log_echo $yum_log "$begin_str Yum installing PiP-v$ver"
-	    work_notyet $yum_log yum install -y process-in-process-v$ver
-	done
-    else
-	log_echo $yum_log "$begin_str Yum installing PiP-v$pip_version"
-	work_notyet $yum_log yum install -y process-in-process-v$pip_version
-    fi
-    sudo=""
-    return 0
-}
+    branch_pip = 'pip-' + str( pip_ver )
 
-install_chooser () {
-    method=$1
-    case $method in
-	docker) pip_docker;;
-	spack)  pip_spack;;
-	yum)    pip_yum;;
-	github) pip_git $method;;
-	rccs)   pip_git $method;;
-	*)      echo "Unknown --how option: $method";;
-    esac
-}
+    retuple = ( 'git', repo + '@' + branch_pip, '' )
+    if repo == 'github':
+        git_repo = 'https://github.com/RIKEN-SysSoft'
+        pip = 'PiP'
+    elif repo == 'git@rccs':
+        git_repo = 'git@git.sys.r-ccs.riken.jp:software'
+        pip = 'PIP'
+    else:
+        log( [ err_prefix, 'Unknown git repo:', repo ], log_fs, True )
+        return False, retuple
+    if not check_command( 'git' ):
+        log( [ err_prefix, 'Unable to find GIT command' ], log_fs, True )
+        return False, retuple
 
-if [ x"$prefix" == x ]; then
-    prefix="install"
-fi
-pfx=`realpath $prefix 2> /dev/null`
-if [ $? != 0 ]; then
-    echo "ERROR: Invalid prefix path: $prefix"
-    flag_error=true
-fi
-prefix=$pfx
+    log( [ msg_enter, 'Git install', git_repo, 'PiP-v'+str( pip_ver ) ], log_fs, True )
 
-if [ x"$work" == x ]; then
-    work="work"
-fi
-wrk=`realpath $work 2> /dev/null`
-if [ $? != 0 ]; then
-    echo "ERROR: Invalid work path: $work"
-    flag_error=true
-fi
-work=$wrk
+    repo_glibc = git_repo + '/' + pip + '-glibc.git'
+    repo_pip   = git_repo + '/' + pip + '.git'
+    repo_gdb   = git_repo + '/' + pip + '-gdb.git'
 
-if $flag_error; then exit 1; fi
+    git_pip = repo_pip + '@' + branch_pip
+    retuple = ( 'git', git_pip, '' )
+    if redhat_ver == 7:
+        branch_glibc = 'centos/glibc-2.17-260.el7.pip.branch'
+        branch_gdb   = 'centos/gdb-7.6.1-94.el7.pip.branch'
+    elif redhat_ver == 8:
+        branch_glibc = 'centos/glibc-2.28-72.el8_1.1.pip.branch'
+        branch_gdb   = 'centos/gdb-7.6.1-94.el7.pip.branch'
+    else:
+        log( [ msg_error, 'Unsupported Redhat version:', str( redhat_ver ) ],
+             log_fs, True )
+        return False, retuple
 
-if $flag_clean; then
-    if is_upper $work $prefix; then
-	echo "WARNING: --clean is disabled since work dir. includes prefix dir.";
-	flag_clean=false;
-    fi
-    if is_upper $work $cwd; then
-	echo "WARNING: --clean is disabled since work dir. include current dir.";
-	flag_clean=false;
-    fi
-fi
+    prefix_dir = create_prefix( prefix, repo, pip_ver )
+    if prefix_dir == None:
+        return False, retuple
+    retuple = ( 'git', git_pip, prefix_dir )
 
-if $flag_any; then
-    flag_all=true
-    install="yum docker spack github rccs"
-    for inst in $install; do
-	install_chooser $inst
-    done
-else
-    install_chooser $how
-fi
+    glibc_srcdir  = os.path.join( work_dir,     pip + '-glibc' )
+    build_script  = os.path.join( glibc_srcdir, 'build.sh' )
+    glibc_build   = os.path.join( work_dir,     'glibc_build' )
+    glibc_install = os.path.join( prefix_dir,   'glibc_install' )
+    if args.noglibc:
+        log( [ msg_prefix1, 'Skipping PiP-glibc build (--noglibc)' ], log_fs, True )
+    else:
+        log( [ msg_prefix1, 'Cloning', repo_glibc ], log_fs, True )
+        if not execute( work_dir, [ 'git', 'clone', '-b', branch_glibc, repo_glibc ],
+                        log_f, log_fs, True ):
+            return False, retuple
+        log( [ msg_prefix1, 'Building', repo_glibc ], log_fs, True )
+        if make_directory( glibc_build ) == None:
+            return False, retuple
+        if make_directory( glibc_install) == None:
+            return False, retuple
+        if not execute( glibc_build,
+                        [ build_script, glibc_install ],
+                        log_f, log_fs, True ):
+            return False, retuple
+        piplnlibs = os.path.join( glibc_install, 'bin', 'piplnlibs.sh' )
+        if not check_file( piplnlibs ):
+            log( [ msg_error, 'Unable to find: ', piplnlibs ], log_fs, True )
+            return False, retuple
 
-if $flag_error; then
-    exit 1
-elif $flag_clean; then
-    if [ x"$work" != x ]; then
-	rm -f -r $work
-    fi
-fi
-exit 0
+    log( [ msg_prefix1, 'Cloning', repo_pip ], log_fs, True )
+    if not execute( work_dir,
+                    [ 'git', 'clone', '-b', branch_pip, repo_pip ],
+                    log_f, log_fs, True ):
+        return False, retuple
 
+    log( [ msg_prefix1, 'Building', repo_pip ], log_fs, True )
+    pip_dir = os.path.join( work_dir, pip )
+    configure = os.path.join( pip_dir, 'configure' )
+    if args.noglibc:
+        if not execute( pip_dir,
+                        [ configure,
+                          '--prefix=' + prefix_dir ],
+                        log_f, log_fs, True ):
+            return False, retuple
+    else:
+        if not execute( pip_dir,
+                        [ configure,
+                          '--prefix=' + prefix_dir,
+                          '--with-glibc-libdir=' + glibc_install + '/lib' ],
+                        log_f, log_fs, True ):
+            return False, retuple
+    if not execute( pip_dir, [ 'make' ], log_f, log_fs, True ):
+        return False, retuple
+    if not execute( pip_dir, [ 'make', 'check' ], log_f, log_fs, True ):
+        return False, retuple
+    if not execute( pip_dir, [ 'make', 'install' ], log_f, log_fs, True ):
+        return False, retuple
+    if not execute( pip_dir, [ 'make', 'check-installed' ], log_f, log_fs, True ):
+        return False, retuple
+    if not execute( pip_dir, [ 'make', 'doc-install' ], log_f, log_fs, True ):
+        return False, retuple
+    pipcc = os.path.join( prefix_dir, 'bin', 'pipcc' )
+    if not check_file( pipcc ):
+        log( [ msg_error, 'Unable to find: ', pipcc ], log_fs, True )
+        return False, retuple
+
+    if args.noglibc or args.nogdb:
+        log( [ msg_prefix1, 'Skipping PiP-gdb build (--noglibc or --nogdb)' ], log_fs, True )
+    else:
+        log( [ msg_prefix1, 'Cloning', repo_gdb ], log_fs, True )
+        if not execute( work_dir,
+                        [ 'git', 'clone', '-b', branch_gdb, repo_gdb ],
+                        log_f, log_fs, True ):
+            return False, retuple
+
+        log( [ msg_prefix1, 'Building', repo_gdb ], log_fs, True )
+        gdb_dir = os.path.join( work_dir, pip + '-gdb' )
+        build_script = os.path.join( gdb_dir, 'build.sh' )
+        if not execute( gdb_dir,
+                        [ build_script,
+                          '--prefix=' + prefix_dir,
+                          '--with-pip=' + prefix_dir ],
+                        log_f, log_fs, True ):
+            return False, retuple
+        pip_gdb = os.path.join( prefix_dir, 'bin', 'pip-gdb' )
+        if not check_file( pip_gdb ):
+            log( [ msg_error, 'Unable to find: ', pip_gdb ], log_fs, True )
+            return False, retuple
+    return True, retuple
+
+prefix_dir = check_prefix( args.prefix )
+work_dir   = check_work( args.work )
+
+# check work and prefix dirs if work can be deleted
+common = os.path.commonpath( [ work_dir, prefix_dir ] )
+if common is work_dir:          # this means work_dir is upper of prefix_dir
+    if args.clean:
+        if not dryrun:
+            print( err_prefix, 'Work dir includes prefix dir and work dir cannot be deleted.' )
+            sys.exit( 1 )
+        else:
+            print( warn_prefix, 'Work dir includes prefix dir and work dir cannot be deleted.' )
+
+list_success = []
+list_failure = []
+
+for h in how_list:
+    last_how = how_list[-1]
+    for pip_ver in pip_vers:
+        sudo_query = False
+        error      = False
+        last_ver = pip_vers[-1]
+
+        ( wdir, log_file ) = create_work( work_dir, h, pip_ver )
+        if log_file == None:
+            sys.exit( 1 )
+
+        try:
+            with open( log_file, mode='w', encoding='utf-8' ) as log_fs:
+                now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
+                print( now_str, sep, file=log_fs )
+
+                if h == 'yum':
+                    retuple = install_yum(    pip_ver, log_file, log_fs )
+                elif h == 'docker':
+                    retuple = install_docker( pip_ver, log_file, log_fs )
+                elif h == 'spack':
+                    retuple = install_spack( prefix_dir, h, pip_ver, wdir, log_file, log_fs )
+                elif h == 'github':
+                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
+                elif h == 'git@rccs':
+                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
+
+                ( ok, ( how, obj, note ) ) = retuple
+                if ok:
+                    list_success.append( ( how, obj, note ) )
+                    log( [ msg_exit,  h, 'install', obj, 'OK' ], log_fs, True )
+                else:
+                    list_failure.append( ( how, obj, log_file ) )
+                    log( [ msg_error, h, 'install', obj, 'NG' ], log_fs, True )
+
+                now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
+                print( sep, now_str, file=log_fs )
+
+        except Exception as e:
+            print( err_prefix, e )
+            print( '**** logfile:', log_file, flush=True )
+        except KeyboardInterrupt:
+            print( '\n^C' )
+            sys.exit( 1 )
+
+        if not last_ver == pip_ver or not last_how == h:
+            if not args.quiet:
+                print( '' )
+
+if args.clean and not dryrun:
+    if list_failure == []:
+        delete_work_dir( wdir )
+    elif not args.quiet:
+        print( '--clean is disabled due to the error' )
+
+if not args.quiet:
+    docker_success = False
+
+    print( '\nSummary' )
+    if list_success != []:
+        for ( how, obj, note ) in list_success:
+            if how == 'docker':
+                docker_success = True
+            print( 'OK  ', end='' )
+            if note == '':
+                print( how, '  ', obj )
+            else:
+                print( how, '  ', obj, '  ', note )
+
+    if docker_success:
+        print( 'To run the PiP Docker image:' )
+        print( '  $ [sudo] docker run -it rikenpip/pip-v<PiP-Version> /bin/bash' )
+
+    if list_failure != []:
+        for ( how, obj, log_file ) in list_failure:
+            print( 'NG  ', end='' )
+            if log_file == '':
+                print( how, '  ', obj )
+            else:
+                print( how, '  ', obj, '  LOG:' + log_file )
+
+if list_failure != []:
+    sys.exit( 1 )
+
+sys.exit( 0 )
