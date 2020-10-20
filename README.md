@@ -47,10 +47,10 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 - `--work=<BUILD_DIR>`
   Specifying build directory. Relative, absolute and tilde slash
   paths are all valid. Default is `--work=work`.
-  When installing from a github repo, all required source treeswill be
-  dowloaded into the specified work directory.  And the specified
+  When installing from a github repo, all required source trees will be
+  downloaded into the specified work directory.  And the specified
   work directory must not exist, otherwise `git` will get mad.
-  All installing oprations will be logged into a file (named
+  All installing operations will be logged into a file (named
   `pip-pip.log`) under this directory.
 
 - `--version=<PIP_VERSION>`
