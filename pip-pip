@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+## -*- mode:python -*-
 
 import datetime
 import time
@@ -8,7 +9,6 @@ import os
 import sys
 import subprocess as sp
 
-log_dir     = ''
 msg_enter   = '>>>'
 msg_exit    = '<<<'
 msg_error   = '<ER'
@@ -18,10 +18,13 @@ err_prefix  ='ERROR:'
 warn_prefix ='WARNING:'
 sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 
-sudo_prefix  = []
-query_prefix = False
-flag_multi   = False
-dryrun       = False
+sudo_prefix   = []
+prompt_prefix = False
+prompt_work   = False
+flag_multi    = False
+dryrun        = False
+
+git_clone = [ 'git', 'clone', '-q' ]
 
 def redhat_version():
     with open( '/etc/redhat-release', mode='r' ) as f:
@@ -135,19 +138,32 @@ args = parser.parse_args()
 
 dryrun = args.dryrun
 
+def expand( list ):
+    if list == []:
+        return []
+    token = list.pop( 0 )
+    if ',' in token:
+        return token.split( ',' ) + expand( list )
+    elif '+' in token:
+        return token.split( '+' ) + expand( list )
+    return [ token ] + expand( list )
+
 ## check how
-how_list = set( args.how )
-how_allowed = [ 'yum', 'docker', 'spack', 'github', 'git@rccs' ]
-if 'all' in how_list or 'ALL' in how_list:
-    flag_multi = True
-    how_list = how_allowed
+how_list = set( expand( args.how ) )
+how_all = [ 'yum', 'docker', 'spack', 'github' ]
+how_ALL = how_all + [ 'git-rccs' ]
+
+if 'all' in how_list:
+    how_list = how_all
+elif 'ALL' in how_list:
+    how_list = how_ALL
 elif how_list == []:
     how_list = [ 'github' ]
 else:
     errlist = []
     howlist = []
     for h in how_list:
-        if h in how_allowed:
+        if h in how_ALL:
             howlist.append( h )
         else:
             errlist.append( h )
@@ -159,12 +175,11 @@ else:
         parser.print_help()
         sys.exit( 1 )
     how_list = howlist
-
 if len( how_list ) > 1:
     flag_multi = True
 
 ## check Linux distribution and version
-version = sorted( set( args.version ) )
+version = sorted( set( expand( args.version ) ) )
 redhat_ver = redhat_version()
 if redhat_ver != 7 and redhat_ver != 8:
     print( err_prefix, 'RHEL', redhat_ver, 'is not supported' )
@@ -194,7 +209,6 @@ else:
         print( err_prefix, errlist, 'is(are) not acceptable value(s) of --version' )
         parser.print_help()
         sys.exit( 1 )
-
 if len( pip_vers ) > 1:
     flag_multi = True
 
@@ -217,29 +231,29 @@ def make_directory( dir ):
 
 # check and create prefix dir
 def check_prefix( prefix):
-    global query_prefix
+    global prompt_prefix
 
     prefix = os.path.realpath( os.path.expanduser( prefix ) )
     if dryrun:
         return prefix
-    if os.path.isfile( prefix ):
-        print( err_prefix, prefix, 'is not a directory' )
+    elif os.path.isfile( prefix ):
+        print( err_prefix, prefix, 'is not a directory but a file' )
         return None
-    if os.path.isdir( prefix ):
-        if not args.force and not query_prefix:
-            if not args.quiet:
-                print( warn_prefix, 'Prefix directory already exists: ', prefix )
+    elif os.path.isdir( prefix ):
+        if not args.force and not prompt_prefix:
+            print( warn_prefix, 'Prefix directory already exists: ', prefix )
             while True:
                 try:
-                    choice = input( "Are you sure to install in prefix directory? 'yes' or 'no' [y/N]: ").lower()
+                    prompt = "Are you sure to install in prefix directory? 'yes' or 'no' [y/N]: "
+                    choice = input( prompt ).lower()
                 except:
                     print( '' )
                     sys.exit( 1 )
 
-                if choice in [ 'y', 'ye', 'yes' ]:
-                    query_prefix = True
+                if choice in [ 'Y', 'y', 'ye', 'yes' ]:
+                    prompt_prefix = True
                     break
-                elif choice in [ 'n', 'no' ]:
+                elif choice in [ 'N', 'n', 'no' ]:
                     sys.exit( 1 )
     return prefix
 
@@ -261,9 +275,10 @@ def create_prefix( prefix, how, ver ):
         return None
 
 def delete_work_dir( wdir ):
+    if dryrun:
+        return
     if not args.quiet:
-        if not args.quiet:
-            print( 'Deleting existing work directory (', wdir, ') ...' )
+        print( 'Deleting existing work directory (', wdir, ') ...' )
     try:
         shutil.rmtree( wdir )
     except Exception as e:
@@ -271,45 +286,50 @@ def delete_work_dir( wdir ):
         sys.exit( 1 )
 
 # check and create work dir
-def check_work( wdir ):
-    wdir = os.path.realpath( os.path.expanduser( wdir ) )
-    if os.path.isfile( wdir ):
-        print( err_prefix, wdir, 'is not a directory' )
-        return None, None
-    if os.path.isdir( wdir ):
-        if not args.force:
-            print( warn_prefix, 'Work directory already exists: ', wdir )
-            while True:
-
-                try:
-                    choice = input( "Delete work directory before install? 'yes' or 'no' [y/N]: ").lower()
-                except:
-                    print( '' )
-                    sys.exit( 1 )
-
-                if choice in ['y', 'ye', 'yes']:
-                    break
-                elif choice in [ 'n', 'no' ]:
-                    sys.exit( 1 )
-        delete_work_dir( wdir )
-    return wdir
-
-def create_work( work, how, ver ):
-    global arch, redhat_ver
-
-    wdir = os.path.join( work,
+def work_path( work, how, ver ):
+    global args, arch, redhat_ver
+    path = os.path.join( work,
                          arch + '_' +
                          'redhat-' + str( redhat_ver ) + '_' +
                          how + '_' +
                          'pip-' + str( ver ) )
+    print( 'work_path: ', path )
+    return path
+
+def check_work( work ):
+    global prompt_work
+
+    if os.path.isfile( work ):
+        print( err_prefix, work, 'is not a directory but a file' )
+        error = True
+    elif os.path.isdir( work ):
+        if not args.force and not prompt_work:
+            print( warn_prefix, 'Work directory already exists: ', work )
+            while True:
+                try:
+                    prompt = "Delete work directory before install? 'yes', 'no' or 'all' [y/N/a]: "
+                    choice = input( prompt ).lower()
+                except:
+                    print( '' )
+                    sys.exit( 1 )
+
+                if choice in [ 'Y', 'y', 'ye', 'yes' ]:
+                    break
+                elif choice in [ 'N', 'n', 'no' ]:
+                    sys.exit( 1 )
+                elif choice in [ 'A', 'a', 'al', 'all' ]:
+                    prompt_work = True
+        delete_work_dir( work )
+
+def create_work( work ):
     try:
-        log_dir = os.path.join( wdir, 'log' )
+        log_dir = os.path.join( work, 'log' )
         os.makedirs( log_dir, exist_ok=True )
         log_file = os.path.join( log_dir, 'pip-pip.log' )
     except Exception as e:
         print( err_prefix, e )
         return None, None
-    return wdir, log_file
+    return work, log_file
 
 def check_file( file ):
     if dryrun:
@@ -332,6 +352,7 @@ def do_poll( proc, dots, tmax, intval, log_fs ):
                 i = i + intval
                 print( dots, end='', flush=True )
             elif t > tmax:
+                print( ' ' + str( tmax ) + ' ', end='', flush=True )
                 return None
             time.sleep( delta )
             t = t + delta
@@ -360,7 +381,6 @@ def execute( chdir, cmd, log_f, log_fs, tbi ):
         else:
             log( [ '[TBI]' ] + cmd, log_fs, True )
     else:
-        ret = -1
         if error:
             log( [ msg_prefix ] + cmd + [ '-- execution skipped due to prev. error' ],
                  log_fs, True )
@@ -380,9 +400,9 @@ def execute( chdir, cmd, log_f, log_fs, tbi ):
             if not args.quiet:
                 print( ' ', end='', flush=True )
             inc = [ ( '.',   10,   1 ),
-                    ( '-',   30,   3 ),
-                    ( '+',  100,  10 ),
-                    ( '=',  300,  30 ) ]
+                    ( '.',   30,   3 ),
+                    ( '.',  100,  10 ),
+                    ( '.',  300,  30 ) ]
             for ( dot, tmax, inc ) in inc:
                 ret = do_poll( proc, dot, tmax, inc, log_fs )
                 if ret == None:
@@ -457,7 +477,8 @@ def install_spack( prefix, how, pip_ver, work_dir, log_f, log_fs ):
 
     if not check_command( 'spack' ):
         if not check_command( 'git' ):
-            log( [ err_prefix, 'Unable to find GIT command (required to install Spack)' ],
+            log( [ err_prefix,
+	           'Unable to find GIT command (required to install Spack)' ],
                  log_fs, True )
             return False, retuple
         prefix_dir = create_prefix( prefix, how, pip_ver )
@@ -465,7 +486,7 @@ def install_spack( prefix, how, pip_ver, work_dir, log_f, log_fs ):
             return False, retuple
         log( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log_fs, True )
         if not execute( prefix_dir,
-                        [ 'git', 'clone', 'https://github.com/spack/spack.git' ],
+                        git_clone + [ 'https://github.com/spack/spack.git' ],
                         log_f,
                         log_fs,
                         False ):
@@ -480,7 +501,8 @@ def install_spack( prefix, how, pip_ver, work_dir, log_f, log_fs ):
         if not execute( [ spack_path, 'uninstall', spack_pip ], log_f, log_fs, False ):
             return False, retuple
     log( [ msg_prefix1, 'Installing', spack_pip ], log_fs, True )
-    if execute( None, [ spack_path, 'install', '--test=all',  spack_pip ], log_f, log_fs, False ):
+    if execute( None, [ spack_path, 'install', '--test=all',  spack_pip ],
+    		      log_f, log_fs, False ):
         return True, retuple
     return False, retuple
 
@@ -493,7 +515,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     if repo == 'github':
         git_repo = 'https://github.com/RIKEN-SysSoft'
         pip = 'PiP'
-    elif repo == 'git@rccs':
+    elif repo == 'git-rccs':
         git_repo = 'git@git.sys.r-ccs.riken.jp:software'
         pip = 'PIP'
     else:
@@ -503,7 +525,8 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         log( [ err_prefix, 'Unable to find GIT command' ], log_fs, True )
         return False, retuple
 
-    log( [ msg_enter, 'Git install', git_repo, 'PiP-v'+str( pip_ver ) ], log_fs, True )
+    log( [ msg_enter, 'Git install', git_repo, 'PiP-v'+str( pip_ver ) ],
+    	 log_fs, True )
 
     repo_glibc = git_repo + '/' + pip + '-glibc.git'
     repo_pip   = git_repo + '/' + pip + '.git'
@@ -535,7 +558,8 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         log( [ msg_prefix1, 'Skipping PiP-glibc build (--noglibc)' ], log_fs, True )
     else:
         log( [ msg_prefix1, 'Cloning', repo_glibc ], log_fs, True )
-        if not execute( work_dir, [ 'git', 'clone', '-b', branch_glibc, repo_glibc ],
+        if not execute( work_dir,
+			git_clone + [ '-b', branch_glibc, repo_glibc ],
                         log_f, log_fs, True ):
             return False, retuple
         log( [ msg_prefix1, 'Building', repo_glibc ], log_fs, True )
@@ -554,7 +578,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
 
     log( [ msg_prefix1, 'Cloning', repo_pip ], log_fs, True )
     if not execute( work_dir,
-                    [ 'git', 'clone', '-b', branch_pip, repo_pip ],
+                    git_clone + [ '-b', branch_pip, repo_pip ],
                     log_f, log_fs, True ):
         return False, retuple
 
@@ -594,7 +618,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     else:
         log( [ msg_prefix1, 'Cloning', repo_gdb ], log_fs, True )
         if not execute( work_dir,
-                        [ 'git', 'clone', '-b', branch_gdb, repo_gdb ],
+                        git_clone + [ '-b', branch_gdb, repo_gdb ],
                         log_f, log_fs, True ):
             return False, retuple
 
@@ -603,7 +627,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         build_script = os.path.join( gdb_dir, 'build.sh' )
         if not execute( gdb_dir,
                         [ build_script,
-                          '--prefix=' + prefix_dir,
+                          '--prefix='   + prefix_dir,
                           '--with-pip=' + prefix_dir ],
                         log_f, log_fs, True ):
             return False, retuple
@@ -614,7 +638,16 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     return True, retuple
 
 prefix_dir = check_prefix( args.prefix )
-work_dir   = check_work( args.work )
+work_dir   = os.path.realpath( os.path.expanduser( args.work ) )
+
+print( 'XXXXX', how_list )
+
+error = False
+for how in how_list:
+    for ver in pip_vers:
+        check_work( work_path( work_dir, how, ver ) )
+if error:
+    sys.exit( 1 )
 
 # check work and prefix dirs if work can be deleted
 common = os.path.commonpath( [ work_dir, prefix_dir ] )
@@ -626,6 +659,7 @@ if common is work_dir:          # this means work_dir is upper of prefix_dir
         else:
             print( warn_prefix, 'Work dir includes prefix dir and work dir cannot be deleted.' )
 
+# let's start
 list_success = []
 list_failure = []
 
@@ -636,7 +670,7 @@ for h in how_list:
         error      = False
         last_ver = pip_vers[-1]
 
-        ( wdir, log_file ) = create_work( work_dir, h, pip_ver )
+        ( wdir, log_file ) = create_work( work_path( work_dir, h, pip_ver ) )
         if log_file == None:
             sys.exit( 1 )
 
@@ -653,7 +687,7 @@ for h in how_list:
                     retuple = install_spack( prefix_dir, h, pip_ver, wdir, log_file, log_fs )
                 elif h == 'github':
                     retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
-                elif h == 'git@rccs':
+                elif h == 'git-rccs':
                     retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
 
                 ( ok, ( how, obj, note ) ) = retuple
@@ -678,6 +712,10 @@ for h in how_list:
             if not args.quiet:
                 print( '' )
 
+if list_success == [] and list_failure == []:
+    # this should not happen
+    sys.exit( 1 )
+
 if args.clean and not dryrun:
     if list_failure == []:
         delete_work_dir( wdir )
@@ -686,7 +724,6 @@ if args.clean and not dryrun:
 
 if not args.quiet:
     docker_success = False
-
     print( '\nSummary' )
     if list_success != []:
         for ( how, obj, note ) in list_success:

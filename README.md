@@ -5,7 +5,7 @@
 # Description
 
 `pip-pip` is the program to build and install
-[PiP](../../PiP), [PiP-glibc](../../../PiP-glibc) and
+[PiP](../../../PiP), [PiP-glibc](../../../PiP-glibc) and
 [PiP-gdb](../../../PiP-gdb).
 
 # Prerequisite
