@@ -185,8 +185,8 @@ parser.add_argument( '--work', '-w',
                      type    = str,
                      default = 'work',
                      nargs   = '?' )
-parser.add_argument( '--clean', '-c',
-                     help    = 'Cleanup working directory when succeeded',
+parser.add_argument( '--keep', '-k',
+                     help    = 'Keep working directory. Work directory will be deleted by default',
                      action  = 'store_true' )
 parser.add_argument( '--sudo', '-s',
                      help    = 'allow sudo (yum, docker)',
@@ -211,18 +211,23 @@ args = parser.parse_args()
 
 dryrun = args.dryrun
 
-def expand( list ):
+def expand( list, flag_lower ):
     if list == []:
         return []
-    token = list.pop( 0 ).lower()
+
+    if flag_lower:
+        token = list.pop( 0 ).lower()
+    else:
+        token = list.pop( 0 )
+
     if ',' in token:
-        return token.split( ',' ) + expand( list )
+        return token.split( ',' ) + expand( list, flag_lower )
     elif '+' in token:
-        return token.split( '+' ) + expand( list )
-    return [ token ] + expand( list )
+        return token.split( '+' ) + expand( list, flag_lower )
+    return [ token ] + expand( list, flag_lower )
 
 ## check how
-how_list = set( expand( args.how ) )
+how_list = set( expand( args.how, True ) )
 how_all = [ 'yum', 'docker', 'spack', 'github' ]
 how_ALL = how_all + [ 'git-rccs' ]
 
@@ -286,7 +291,7 @@ if redhat_ver != None:
         error = True
 
 ## Check PiP version
-version = sorted( set( expand( args.version ) ) )
+version = sorted( set( expand( args.version, False ) ) )
 pip_vers = []
 if 'ALL' in version:
     if redhat_ver == 7:
@@ -688,6 +693,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     repo_glibc = git_repo + '/' + pip + '-glibc.git'
     repo_pip   = git_repo + '/' + pip + '.git'
     repo_gdb   = git_repo + '/' + pip + '-gdb.git'
+    repo_test  = git_repo + '/' + pip + '-Testsuite'
 
     git_pip = repo_pip + '@' + branch_pip
     retuple = ( 'git', git_pip, '' )
@@ -744,8 +750,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     configure = os.path.join( pip_dir, 'configure' )
     if args.noglibc:
         if not execute( pip_dir,
-                        [ configure,
-                          '--prefix=' + prefix_dir ],
+                        [ configure, '--prefix=' + prefix_dir ],
                         log_f, log_fs, True ):
             return False, retuple
     else:
@@ -757,17 +762,21 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
             return False, retuple
     if not execute( pip_dir, [ 'make' ], log_f, log_fs, True ):
         return False, retuple
-    if not execute( pip_dir, [ 'make', 'check' ], log_f, log_fs, True ):
-        return False, retuple
-    if not execute( pip_dir, [ 'make', 'install' ], log_f, log_fs, True ):
-        return False, retuple
-    if not execute( pip_dir, [ 'make', 'check-installed' ], log_f, log_fs, True ):
+    if not execute( pip_dir, [ 'make install' ], log_f, log_fs, True ):
         return False, retuple
     if not execute( pip_dir, [ 'make', 'doc-install' ], log_f, log_fs, True ):
         return False, retuple
-    pipcc = os.path.join( prefix_dir, 'bin', 'pipcc' )
-    if not check_file( pipcc ):
-        log( [ msg_error, 'Unable to find: ', pipcc ], log_fs, True )
+
+    log( [ msg_prefix1, 'Testing', repo_pip ], log_fs, True )
+    if not execute( work_dir, git_clone + [ repo_test ], log_f, log_fs, True ):
+        return False, retuple
+    test_dir = os.path.join( work_dir, pip + '-Testsuite' )
+    configure = os.path.join( test_dir, 'configure' )
+    if not execute( test_dir,
+                    [ configure, '--with-pip=' + prefix_dir ],
+                    log_f, log_fs, True ):
+        return False, retuple
+    if not execute( test_dir, [ 'make', 'test' ], log_f, log_fs, True ):
         return False, retuple
 
     if args.noglibc or args.nogdb:
@@ -792,7 +801,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         if not check_file( pip_gdb ):
             log( [ msg_error, 'Unable to find: ', pip_gdb ], log_fs, True )
             return False, retuple
-    if args.clean:
+    if not args.keep:
         delete_work_dir( work_dir )
     return True, retuple
 
@@ -802,7 +811,7 @@ work_dir   = os.path.realpath( os.path.expanduser( args.work ) )
 # check work and prefix dirs if work can be deleted
 common = os.path.commonpath( [ work_dir, prefix_dir ] )
 if common is work_dir:          # this means work_dir is upper of prefix_dir
-    if args.clean:
+    if not args.keep:
         if not dryrun:
             print( err_prefix, 'Work dir includes prefix dir and work dir cannot be deleted.' )
             error = True
@@ -923,13 +932,13 @@ if list_success == [] and list_failure == []:
     # this should not happen
     sys.exit( 1 )
 
-if args.clean:
+if not args.keep:
     if not args.quiet:
         print( '' )
     if list_failure == []:
         delete_work_dir( wdir )
     elif not args.quiet:
-        print( '--clean is disabled due to the error' )
+        print( 'the work dir is not deleted due to the error' )
 
 if not args.quiet:
     yum_success    = False
