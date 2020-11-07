@@ -14,10 +14,11 @@ This program is written in Python (version 3).
 
 Required software packages:
 
-- git
-- yum (optional)
-- docker (optional)
-- spack (optional)
+- **Python3** (mandatory)
+- **Git** (mandatory)
+- Yum [optional]
+- Docker [optional]
+- Spack [optional]
 
 Supported architectures:
 
@@ -64,7 +65,8 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   option, user must be a sudoer.
 
 - `--force`
-  This option stops asking.
+  This option stops asking when the installing (prefix) directory
+  and/or the work directory already exist(s).
 
 - `--noglibc`
   Do not install PiP-(patched-)glibc and PiP-(patched-)gdb. This
@@ -75,14 +77,14 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   Do not install PiP-(patched-)gdb. This option is only effective with
   the `--github` option. (refer to the next section for more details)
 
-- `--clean`
-  Remove the specified work directory when the installation finishes
-  successfully.  If the build directory is the
-  same with the prefix directory, or the build directory includes the
-  prefix directory, then this option is disabled automatically.
+- `--keep`
+  Do not remove the work directory when the installation finishes.  If
+  the build directory is the same with the prefix directory, or the
+  build directory is somewhere above the prefix directory, then the
+  deletion is disabled automatically.
 
 - `--dryrun`
-  Dryrun.
+  Dryrun. No actual actions will takeplace.
 
 - `--quiet`
   Run quietly.
