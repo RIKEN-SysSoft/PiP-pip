@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 ## -*- mode:python -*-
 # $PIP_VERSION: Version 2.0.0$
 # $PIP_license: <Simplified BSD License>
@@ -30,6 +30,7 @@
 # $RIKEN_copyright: Riken Center for Computational Sceience,
 # System Software Development Team, 2016, 2017, 2018, 2019, 2020$
 
+from __future__ import print_function
 import datetime
 import time
 import argparse
@@ -155,14 +156,18 @@ def log( list, log_fs, newline ):
         else:
             if newline:
                 if not args.quiet:
-                    print( msg, flush=True )
+                    print( msg )
+                    sys.stdout.flush()
                 if not dryrun:
-                    print( msg, flush=True, file=log_fs )
+                    print( msg, file=log_fs )
+                    log_fs.flush()
             else:
                 if not args.quiet:
-                    print( msg, end='', flush=True )
+                    print( msg, end='' )
+                    sys.stdout.flush()
                 if not dryrun:
-                    print( msg, end='', flush=True, file=log_fs )
+                    print( msg, end='', file=log_fs )
+                    log_fs.flush()
 
 def is_privileged( log_fs ):
     global error
@@ -417,7 +422,8 @@ def prefix_path( prefix, how, ver ):
 def create_prefix( prefix, how, ver ):
     pdir = prefix_path( prefix, how, ver )
     try:
-        os.makedirs( pdir, exist_ok=True )
+        if not os.path.isdir( pdir ):
+            os.makedirs( pdir )
         return pdir
     except Exception as e:
         print( err_prefix, e )
@@ -430,9 +436,11 @@ def delete_work_dir( wdir ):
 
     if not dryrun:
         if not quiet:
-            print( 'Deleting work directory (', wdir, ') ... ', end='', flush=True )
+            print( 'Deleting work directory (', wdir, ') ... ', end='' )
+            sys.stdout.flush()
     else:
-        print( '[DRY] Deleting work directory (', wdir, ') ... done ', flush=True )
+        print( '[DRY] Deleting work directory (', wdir, ') ... done ' )
+        sys.stdout.flush()
         return True
 
     try_first   = True
@@ -448,22 +456,26 @@ def delete_work_dir( wdir ):
                     raise Exception( 'rm -r -f ' + wdir + ' FAILD' )
             # success
             if not quiet:
-                print( 'done', flush=True )
+                print( 'done' )
+                sys.stdout.flush()
             return True
 
         except Exception as e:
             retry_count = retry_count - 1
             if retry_count == 0:
-                print( 'failed', flush=True )
+                print( 'failed' )
+                sys.stdout.flush()
                 error = True
                 return False
 
             if quiet:
                 queit = False
                 print( 'delete_work_dir:', err_prefix, e )
-                print( 'Deleting work directory ('+wdir+') ..retrying..', end='', flush=True )
+                print( 'Deleting work directory ('+wdir+') ..retrying..', end='' )
+                sys.stdout.flush()
             else:
-                print( 'retrying..', end='', flush=True )
+                print( 'retrying ..', end='' )
+                sys.stdout.flush()
             time.sleep( retry_wait )
             retry_wait = retry_wait * 2
 
@@ -516,13 +528,14 @@ def check_work( work ):
 def create_work( work ):
     try:
         log_dir = os.path.join( work, 'log' )
-        os.makedirs( log_dir, exist_ok=True )
-        log_file = os.path.join( log_dir, 'pip-pip.log' )
+        if not os.path.isdir( log_dir ):
+            os.makedirs( log_dir )
+        log_path = os.path.join( log_dir, 'pip-pip.log' )
     except Exception as e:
         print( err_prefix, e )
         error = True
         return None, None
-    return work, log_file
+    return work, log_path
 
 def check_file( file ):
     if dryrun:
@@ -538,13 +551,15 @@ def do_poll( proc, t_accum, dots, tmax, intval, log_fs ):
     while True:
         if t >= tmax:
             if not args.quiet:
-                print( str( t_accum ), end='', flush=True )
+                print( str( t_accum ), end='' )
+                sys.stdout.flush()
             return None, t_accum
         if t >= i:
             i = i + intval
             t_accum = t_accum + intval
             if not args.quiet:
-                print( dots, end='', flush=True )
+                print( dots, end='' )
+                sys.stdout.flush()
 
         time.sleep( delta )
         t = t + delta
@@ -591,7 +606,8 @@ def execute( dir, cmd, log_f, log_fs, tbi ):
         proc = sp.Popen( shell_cmd, close_fds=True )
 
         if not args.quiet:
-            print( ' ', end='', flush=True )
+            print( ' ', end='' )
+            sys.stdout.flush()
         inc = [ ( '.',   10,   1 ),
                 ( '.',   30,   3 ),
                 ( '.',  100,  10 ),
@@ -838,7 +854,7 @@ prefix_dir = check_prefix( args.prefix )
 work_dir   = os.path.realpath( os.path.expanduser( args.work ) )
 
 # check work and prefix dirs if work can be deleted
-common = os.path.commonpath( [ work_dir, prefix_dir ] )
+common = os.path.commonprefix( [ work_dir, prefix_dir ] )
 if common is work_dir:          # this means work_dir is upper of prefix_dir
     if not args.keep:
         if not dryrun:
@@ -915,32 +931,32 @@ for h in how_list:
             list_skipped.append( ( h, arch, redhat_ver, pip_ver ) )
             continue
 
-        ( wdir, log_file ) = create_work( work_path( work_dir, h, pip_ver ) )
-        if log_file == None:
+        ( wdir, log_path ) = create_work( work_path( work_dir, h, pip_ver ) )
+        if log_path == None:
             sys.exit( 1 )
 
         try:
-            with open( log_file, mode='w', encoding='utf-8' ) as log_fs:
+            with open( log_path, mode='w' ) as log_fs:
                 now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
                 print( now_str, sep, file=log_fs )
 
                 if h == 'yum':
-                    retuple = install_yum(    pip_ver, log_file, log_fs )
+                    retuple = install_yum(    pip_ver, log_path, log_fs )
                 elif h == 'docker':
-                    retuple = install_docker( pip_ver, log_file, log_fs )
+                    retuple = install_docker( pip_ver, log_path, log_fs )
                 elif h == 'spack':
-                    retuple = install_spack( prefix_dir, h, pip_ver, log_file, log_fs )
+                    retuple = install_spack( prefix_dir, h, pip_ver, log_path, log_fs )
                 elif h == 'github':
-                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
+                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
                 elif h == 'git-rccs':
-                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_file, log_fs )
+                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
 
                 ( ok, ( how, obj, note ) ) = retuple
                 if ok:
                     list_success.append( ( how, obj, note ) )
                     log( [ msg_exit,  h, 'install', obj, 'OK' ], log_fs, True )
                 else:
-                    list_failure.append( ( how, obj, log_file ) )
+                    list_failure.append( ( how, obj, log_path ) )
                     log( [ msg_error, h, 'install', obj, 'NG' ], log_fs, True )
 
                 now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
@@ -948,7 +964,8 @@ for h in how_list:
 
         except Exception as e:
             print( err_prefix, e )
-            print( '**** logfile:', log_file, flush=True )
+            print( '**** logfile:', log_path )
+            sys.stdout.flush()
         except KeyboardInterrupt:
             print( '\n^C' )
             sys.exit( 1 )
@@ -994,12 +1011,12 @@ if not args.quiet:
             print( 'SKIPPED', how, arch, 'redhat'+str(redhat), 'PiP-v'+str(pip_ver) )
 
     if list_failure != []:
-        for ( how, obj, log_file ) in list_failure:
+        for ( how, obj, log_path ) in list_failure:
             print( 'NG      ', end='' )
-            if log_file == '':
+            if log_path == '':
                 print( how, obj )
             else:
-                print( how, obj, 'LOG: ' + log_file )
+                print( how, obj, 'LOG: ' + log_path )
 
     if yum_success or docker_success:
         print( '' )
