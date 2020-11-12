@@ -38,6 +38,8 @@ import shutil
 import os
 import sys
 import subprocess as sp
+import re
+
 # Ready list: (how, arch, redhat, pip )
 ready = { ( 'yum',      'x86_64',  7, 1 ): True,
           ( 'yum',      'x86_64',  7, 2 ): False,
@@ -116,10 +118,12 @@ sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 
 sudo_cmd       = []
 prompt_prefix  = False
-ignore_work_rm = False
+prompt_rm_work = False
 flag_multi     = False
 dryrun         = False
 spack_path     = None
+
+null_file = open(os.devnull,'w')
 
 git_clone = [ 'git', 'clone' ]
 
@@ -220,16 +224,16 @@ parser.add_argument( '--work', '-w',
                      default = 'work',
                      nargs   = '?' )
 parser.add_argument( '--keep', '-k',
-                     help    = 'Keep working directory. Work directory will be deleted by default',
+                     help    = 'Keep working directory.  Work is deleted when succeeded by default',
                      action  = 'store_true' )
 parser.add_argument( '--sudo', '-s',
                      help    = 'allow sudo (yum, docker)',
                      action  = 'store_true' )
-parser.add_argument( '--dryrun', '-d',
+parser.add_argument( '--dryrun', '-D',
                      help    = 'dry run',
                      action  = 'store_true' )
 parser.add_argument( '--force', '-f',
-                     help    = 'force to delete work directory, if exists',
+                     help    = 'do not ask user',
                      action  = 'store_true' )
 parser.add_argument( '--quiet', '-q',
                      help    = 'quiet mode',
@@ -490,7 +494,7 @@ def work_path( work, how, ver ):
     return path
 
 def check_work( work ):
-    global ignore_work_rm
+    global promtpt_rm_work
 
     if os.path.isfile( work ):
         print( err_prefix, work, 'is not a directory but a file' )
@@ -498,7 +502,12 @@ def check_work( work ):
         return False
     if not os.path.isdir( work ):
         return True
-    if not args.force and not ignore_work_rm:
+    if args.force:
+        if not delete_work_dir( work ):
+            error = True
+            return False
+        return True
+    if not prompt_rm_work:
         print( warn_prefix, 'Work directory already exists: ', work )
         if not dryrun:
             while True:
@@ -513,17 +522,17 @@ def check_work( work ):
                 if choice in [ 'y', 'ye', 'yes' ]:
                     break
                 elif choice in [ 'a', 'al', 'all' ]:
-                    ignore_work_rm = True
+                    prompt_rm_work = True
                     break;
                 elif choice in [ 'n', 'no' ]:
                     error = True
                     return False
                 else:
                     continue
-        if not delete_work_dir( work ):
-            error = True
-            return False
-        return True
+    if not delete_work_dir( work ):
+        error = True
+        return False
+    return True
 
 def create_work( work ):
     try:
@@ -603,7 +612,7 @@ def execute( dir, cmd, log_f, log_fs, tbi ):
             chdir = [ 'cd', dir ]
         cmd_list = [ '(' ] + chdir + [ '&&' ] + cmd + [ ')' ] + redirect
         shell_cmd = [ '/bin/sh', '-c', ' '.join( cmd_list ) ]
-        proc = sp.Popen( shell_cmd, close_fds=True )
+        proc = sp.Popen( shell_cmd, close_fds=True, stderr=sys.stdout )
 
         if not args.quiet:
             print( ' ', end='' )
@@ -713,6 +722,38 @@ def install_spack( prefix, how, pip_ver, log_f, log_fs ):
     		      log_f, log_fs, False ):
         return False, retuple
     return True, retuple
+
+def wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs ):
+    if not execute( work_dir, [ 'wget', url ], log_f, log_fs, True ):
+        log( [ msg_error, 'wget_install: wget', url, '-- FAILED' ], log_fs, True )
+        raise Exception()
+    [ mod_tar ] = re.findall( '.*/(.*)', url )
+    if not check_file( os.path.join( work_dir, mod_tar ) ):
+        log( [ msg_error, 'wget_install:', mod_tar, '-- unable to find' ], log_fs, True )
+        raise Exception()
+    if not execute( work_dir, [ 'tar', 'xzf', mod_tar ], log_f, log_fs, True ):
+        log( [ msg_error, 'wget_install: tar xzf', mod_tar, '-- FAILED' ], log_fs, True )
+        raise Exception()
+    os.remove( os.path.join( work_dir, mod_tar ) )
+    [ mod_name ] = re.findall( '.*/(.*)\.tar.gz', url )
+    mod_work = os.path.join( work_dir, mod_name )
+    if not execute( mod_work,
+                    [ './configure', '--prefix=' + prefix_dir ],
+                    log_f, log_fs, True ):
+        log( [ msg_error, 'wget_install: '
+               './configure', '--prefix='+prefix_dir, 
+               '['+mod_name+'] -- FAILED' ], 
+             log_fs, True )
+        raise Exception()
+    if not execute( mod_work, [ 'make' ], log_f, log_fs, True ):
+        log( [ msg_error, 'wget_install: make ['+mod_name+'] -- FAILED' ], 
+             log_fs, True )
+        raise Exception()
+    if not execute( mod_work, [ 'make', 'install' ], log_f, log_fs, True ):
+        log( [ msg_error, 'wget_install: make install ['+mod_name+'] -- FAILED' ], 
+             log_fs, True )
+        raise Exception()
+    return '--package=' + pkgname + ':' + prefix_dir
 
 def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     global args, redhat_ver, git_clone
@@ -833,13 +874,32 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
                         log_f, log_fs, True ):
             return False, retuple
 
+        log( [ msg_prefix1, 'Checking required packages', repo_gdb ], log_fs, True )
+        gdb_dir = os.path.join( work_dir, pip + '-gdb' )
+        build_script = os.path.join( gdb_dir, 'build.sh' )
+        inst_pkgs = []
+        try:
+            psproc = sp.Popen( [ build_script, '--missing' ], 
+                               stdout=sp.PIPE, stderr=null_file )
+            while True:
+                mod = psproc.stdout.readline()
+                if mod == '':
+                    break;
+                [ pkgname, url ] = mod.split()
+                installed = wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs )
+                if not installed in inst_pkgs:
+                    inst_pkgs += [ installed ]
+        except Exception as e:
+            log( [ msg_error, build_script+' --missing: FAILED', e ], log_fs, True )
+            return False, retuple
+
         log( [ msg_prefix1, 'Building', repo_gdb ], log_fs, True )
         gdb_dir = os.path.join( work_dir, pip + '-gdb' )
         build_script = os.path.join( gdb_dir, 'build.sh' )
         if not execute( gdb_dir,
                         [ build_script,
                           '--prefix='   + prefix_dir,
-                          '--with-pip=' + prefix_dir ],
+                          '--with-pip=' + prefix_dir ] + inst_pkgs,
                         log_f, log_fs, True ):
             return False, retuple
         pip_gdb = os.path.join( prefix_dir, 'bin', 'pip-gdb' )
@@ -1028,6 +1088,7 @@ if not args.quiet:
         print( 'DOCKER: To run the PiP Docker image:' )
         print( '        $ [sudo] docker run -it rikenpip/pip-v<PiP-Version> /bin/bash' )
 
+null_file.close()
 if list_failure != []:
     sys.exit( 1 )
 
