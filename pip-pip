@@ -138,7 +138,7 @@ sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 sudo_cmd       = []
 prompt_prefix  = False
 prompt_rm_work = False
-flag_multi     = False
+flag_subdir    = False
 dryrun         = False
 spack_path     = None
 
@@ -251,7 +251,7 @@ parser.add_argument( '--dryrun', '-D',
                      help    = 'dry run',
                      action  = 'store_true' )
 parser.add_argument( '--force', '-f',
-                     help    = 'do not ask user',
+                     help    = 'do not prompt user',
                      action  = 'store_true' )
 parser.add_argument( '--quiet', '-q',
                      help    = 'quiet mode',
@@ -260,17 +260,20 @@ parser.add_argument( '--noglibc', '-noglibc',
                      help    = 'Do not build PiP-glibc and PiP_gdb (github)',
                      action  = 'store_true' )
 parser.add_argument( '--nogdb', '-nogdb',
-                     help    = 'Do not build PiP_gdb (github)',
+                      help    = 'Do not build PiP_gdb (github)',
+                     action  = 'store_true' )
+parser.add_argument( '--auto', '-a',
+                      help    = 'Do not build PiP_gdb (github)',
                      action  = 'store_true' )
 parser.add_argument( '--test', '-t',
-                    type     = int, 
+                    type     = int,
                     nargs    = '?',
                     default  = 10,
                     help     = 'The threshold of the number of PiP testsuite errors (10)' )
 args = parser.parse_args()
 
 test_threshold = args.test
-if test_threshold < 0: 
+if test_threshold < 0:
     test_threshold = 10
 os.environ['PIP_TEST_THRESHOLD'] = str(test_threshold)
 
@@ -318,7 +321,7 @@ else:
         error = True
     how_list = howlist
 if len( how_list ) > 1:
-    flag_multi = True
+    flag_subdir = True
 
 def check_command( command ):
     try:
@@ -390,7 +393,7 @@ else:
             print( err_prefix, errlist, 'are not acceptable values of --version' )
         error = True
 if len( pip_vers ) > 1:
-    flag_multi = True
+    flag_subdir = True
 
 # check arch
 arch = cpu_arch()
@@ -446,8 +449,8 @@ def check_prefix( prefix ):
     return prefix
 
 def prefix_path( prefix, how, ver ):
-    global flag_multi
-    if not flag_multi:
+    global flag_subdir
+    if not flag_subdir:
         return prefix
     else:
         return os.path.join( prefix,
@@ -944,7 +947,11 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         delete_work_dir( work_dir )
     return True, retuple
 
-prefix_dir = check_prefix( args.prefix )
+prefix = args.prefix
+if prefix[-2:] == '/*':
+    flag_subdir=True
+    prefix = prefix[0:-2]
+prefix_dir = check_prefix( prefix )
 work_dir   = os.path.realpath( os.path.expanduser( args.work ) )
 
 # check work and prefix dirs if work can be deleted

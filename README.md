@@ -10,11 +10,11 @@
 
 # Prerequisite
 
-This program is written in Python (version 3).
+This program is written in Python.
 
 Required software packages:
 
-- **Python3** (mandatory)
+- **Python** (mandatory, version 2.7.5 or higher)
 - **Git** (mandatory)
 - Yum [optional]
 - Docker [optional]
@@ -39,7 +39,7 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   `spack` and `github`. `yum` and `docker` installations require root
   privilege. Refer to the `--sudo` option below. `spack` will be
   installed automatically if `spack` is not yet installed (or not in
-  the PATH). Default is `github`.
+  the PATH). Default is `--how=github`.
 
 - `--prefix=<PREFIX_DIR>`
   Specifying install directory. Relative, absolute and tilde slash
@@ -56,7 +56,7 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 
 - `--version=<PIP_VERSION>`
   Specifying PiP version number. Currently, "2" (PiP-v2) and "3"
-  (PiP-v3) are valid.  Default if "2."  PiP-v1 ("1") is deprecated and
+  (PiP-v3) are valid.  Default is `--version=2`.  PiP-v1 ("1") is deprecated and
   unable to specify. Refer to [PiP](../../PiP) for the version
   differences.
 
@@ -65,32 +65,45 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   option, user must be a sudoer.
 
 - `--force`
-  This option stops asking when the installing (prefix) directory
-  and/or the work directory already exist(s).
+  This option stops asking if the installing (prefix) directory
+  and/or the work directory will be deleted or not when the already
+  exist(s).
 
 - `--noglibc`
   Do not install PiP-(patched-)glibc and PiP-(patched-)gdb. This
-  option is only effective with the `--github` option. (refer to the
+  option is only effective with the `--how=github` option. (refer to the
   next section for more details)
 
 - `--nogdb`
   Do not install PiP-(patched-)gdb. This option is only effective with
-  the `--github` option. (refer to the next section for more details)
+  the `--how=github` option. (refer to the next section for more details)
 
 - `--keep`
-  Do not remove the work directory when the installation finishes.  If
+  Do not remove the work directory when the installation succeeds.  If
   the build directory is the same with the prefix directory, or the
   build directory is somewhere above the prefix directory, then the
   deletion is disabled automatically.
 
 - `--dryrun`
-  Dryrun. No actual actions will takeplace.
+  Dryrun. No actual actions will take place.
 
 - `--quiet`
   Run quietly.
 
 - `--help`
   Display help message.
+
+The `--how` and/or `--version` options may have mutiple values. In this
+case, `pip-pip` will try to install all possible combinations of the
+two options. `pip-pip` will create subdirectories right under the install
+directory (`--prefix') named in the `<ARCH>-<LINUX>-<HOW>-<VER>` style
+and each installation of the combinations will be installed in one of
+those sub-directries.
+When the the specified install directory is ended with `/*`, then the
+sub-directory will also be created in the same way even if only a
+single installtion is specified. As with the work directory, those
+subdirectory(ies) are created right under the specified work directory
+in any cases.
 
 # PiP-glibc and PiP-gdb
 
