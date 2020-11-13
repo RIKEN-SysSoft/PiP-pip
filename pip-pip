@@ -321,9 +321,15 @@ if len( how_list ) > 1:
     flag_multi = True
 
 def check_command( command ):
-    if shutil.which( command  ) == None:
+    try:
+        psproc = sp.Popen( [ 'which ' + command ],
+                           stdout=null_file, stderr=null_file,
+                           shell=True )
+        if psproc.wait() == 0:
+            return True
+    except:
         return False
-    return True
+    return False
 
 no_spack = False
 error = False
