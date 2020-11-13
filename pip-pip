@@ -40,6 +40,25 @@ import sys
 import subprocess as sp
 import re
 
+git_url_tab  = { 'github'   : 'https://github.com/RIKEN-SysSoft/',
+                 'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software/' }
+
+git_repo_tab = { 'github'   : { 'glibc': 'PiP-glibc.git',
+                                'pip'  : 'PiP.git',
+                                'gdb'  : 'PiP-gdb.git',
+                                'test' : 'PiP-Testsuite.git' },
+                 'git-rccs' : { 'glibc': 'PIP-glibc.git',
+                                'pip'  : 'PIP.git',
+                                'gdb'  : 'PIP-gdb.git',
+                                'test' : 'PIP-Testsuite.git' } }
+
+gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
+                         'centos/gdb-7.6.1-94.el7.pip.branch' ),
+                   8 : ( 'centos/glibc-2.28-72.el8_1.1.pip.branch',
+                         'centos/gdb-7.6.1-94.el7.pip.branch' ) }
+
+spack_url = 'https://github.com/spack/spack.git'
+
 # Ready list: (how, arch, redhat, pip )
 ready = { ( 'yum',      'x86_64',  7, 1 ): True,
           ( 'yum',      'x86_64',  7, 2 ): False,
@@ -250,7 +269,7 @@ args = parser.parse_args()
 dryrun = args.dryrun
 
 def expand( list, flag_lower ):
-    if list == []:
+    if list == [] or list == None:
         return []
 
     if flag_lower:
@@ -265,7 +284,7 @@ def expand( list, flag_lower ):
     return [ token ] + expand( list, flag_lower )
 
 ## check how
-how_list = set( expand( args.how, True ) )
+how_list = list( set( expand( args.how, True ) ) )
 how_all = [ 'yum', 'docker', 'spack', 'github' ]
 how_ALL = how_all + [ 'git-rccs' ]
 
@@ -436,14 +455,14 @@ def create_prefix( prefix, how, ver ):
 
 def delete_work_dir( wdir ):
     global args
-    quiet = args.quiet
+    rm_quiet = args.quiet
 
     if not dryrun:
-        if not quiet:
-            print( 'Deleting work directory (', wdir, ') ... ', end='' )
+        if not rm_quiet:
+            print( 'Deleting work directory (', wdir, ') ..', end='' )
             sys.stdout.flush()
     else:
-        print( '[DRY] Deleting work directory (', wdir, ') ... done ' )
+        print( '[DRY] Deleting work directory (', wdir, ') .. done' )
         sys.stdout.flush()
         return True
 
@@ -459,8 +478,8 @@ def delete_work_dir( wdir ):
                 if sp.run( [ '/bin/sh', '-c', 'rm -f -r ' + wdir + ' > /dev/null 2>&1' ] ).returncode != 0:
                     raise Exception( 'rm -r -f ' + wdir + ' FAILD' )
             # success
-            if not quiet:
-                print( 'done' )
+            if not rm_quiet:
+                print( ' done' )
                 sys.stdout.flush()
             return True
 
@@ -472,13 +491,13 @@ def delete_work_dir( wdir ):
                 error = True
                 return False
 
-            if quiet:
-                queit = False
+            if rm_quiet:
+                rm_quiet = False
                 print( 'delete_work_dir:', err_prefix, e )
-                print( 'Deleting work directory ('+wdir+') ..retrying..', end='' )
+                print( 'Deleting work directory ('+wdir+')..retrying..', end='' )
                 sys.stdout.flush()
             else:
-                print( 'retrying ..', end='' )
+                print( 'retrying..', end='' )
                 sys.stdout.flush()
             time.sleep( retry_wait )
             retry_wait = retry_wait * 2
@@ -706,9 +725,9 @@ def install_spack( prefix, how, pip_ver, log_f, log_fs ):
             return False, retuple
         log( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log_fs, True )
         if not execute( prefix_dir,
-                        git_clone + [ 'https://github.com/spack/spack.git' ],
+                        git_clone + [ spack_url ],
                         log_f, log_fs, False ):
-            spack_path = ''
+            spack_path = ''     # mark as not found
             return False, retuple
         spack_path = os.path.join( prefix_dir, 'spack', 'bin', 'spack' )
 
@@ -741,16 +760,16 @@ def wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs ):
                     [ './configure', '--prefix=' + prefix_dir ],
                     log_f, log_fs, True ):
         log( [ msg_error, 'wget_install: '
-               './configure', '--prefix='+prefix_dir, 
-               '['+mod_name+'] -- FAILED' ], 
+               './configure', '--prefix='+prefix_dir,
+               '['+mod_name+'] -- FAILED' ],
              log_fs, True )
         raise Exception()
     if not execute( mod_work, [ 'make' ], log_f, log_fs, True ):
-        log( [ msg_error, 'wget_install: make ['+mod_name+'] -- FAILED' ], 
+        log( [ msg_error, 'wget_install: make ['+mod_name+'] -- FAILED' ],
              log_fs, True )
         raise Exception()
     if not execute( mod_work, [ 'make', 'install' ], log_f, log_fs, True ):
-        log( [ msg_error, 'wget_install: make install ['+mod_name+'] -- FAILED' ], 
+        log( [ msg_error, 'wget_install: make install ['+mod_name+'] -- FAILED' ],
              log_fs, True )
         raise Exception()
     return '--package=' + pkgname + ':' + prefix_dir
@@ -762,10 +781,10 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
 
     retuple = ( 'git', repo + '@' + branch_pip, '' )
     if repo == 'github':
-        git_repo = 'https://github.com/RIKEN-SysSoft'
+        git_repo = git_url_tab[repo]
         pip = 'PiP'
     elif repo == 'git-rccs':
-        git_repo = 'git@git.sys.r-ccs.riken.jp:software'
+        git_repo = git_url_tab[repo]
         pip = 'PIP'
     else:
         log( [ err_prefix, 'Unknown git repo:', repo ], log_fs, True )
@@ -776,21 +795,19 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     if not args.quiet:
         print( 'Log File:', log_f )
 
-    repo_glibc = git_repo + '/' + pip + '-glibc.git'
-    repo_pip   = git_repo + '/' + pip + '.git'
-    repo_gdb   = git_repo + '/' + pip + '-gdb.git'
-    repo_test  = git_repo + '/' + pip + '-Testsuite'
+    repo_glibc = git_repo + git_repo_tab[repo]['glibc']
+    repo_pip   = git_repo + git_repo_tab[repo]['pip']
+    repo_gdb   = git_repo + git_repo_tab[repo]['gdb']
+    repo_test  = git_repo + git_repo_tab[repo]['test']
 
     git_pip = repo_pip + '@' + branch_pip
     retuple = ( 'git', git_pip, '' )
     if redhat_ver == 7:
-        branch_glibc = 'centos/glibc-2.17-260.el7.pip.branch'
-        branch_gdb   = 'centos/gdb-7.6.1-94.el7.pip.branch'
+        ( branch_glibc, branch_gdb ) = gnu_branch_tab[7]
     elif redhat_ver == 8:
-        branch_glibc = 'centos/glibc-2.28-72.el8_1.1.pip.branch'
-        branch_gdb   = 'centos/gdb-7.6.1-94.el7.pip.branch'
+        ( branch_glibc, branch_gdb ) = gnu_branch_tab[8]
     else:
-        log( [ msg_error, 'Unsupported Redhat version:', str( redhat_ver ) ],
+        log( [ msg_error, 'Unsupported RedHat/CentOS version:', str( redhat_ver ) ],
              log_fs, True )
         return False, retuple
 
@@ -879,13 +896,16 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         build_script = os.path.join( gdb_dir, 'build.sh' )
         inst_pkgs = []
         try:
-            psproc = sp.Popen( [ build_script, '--missing' ], 
+            psproc = sp.Popen( [ build_script, '--missing' ],
                                stdout=sp.PIPE, stderr=null_file )
             while True:
                 mod = psproc.stdout.readline()
                 if mod == '':
-                    break;
-                [ pkgname, url ] = mod.split()
+                    break
+                missing = mod.split()
+                if missing == []:
+                    break
+                [ pkgname, url ] = missing
                 installed = wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs )
                 if not installed in inst_pkgs:
                     inst_pkgs += [ installed ]
@@ -981,8 +1001,12 @@ list_failure = []
 list_skipped = []
 nl = False
 
-for h in how_list:
+if how_list != []:
     last_how = how_list[-1]
+else:
+    last_how = None
+
+for h in how_list:
     for pip_ver in pip_vers:
         error      = False
         last_ver = pip_vers[-1]
