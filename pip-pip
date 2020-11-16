@@ -316,23 +316,20 @@ if test_threshold < 0:
     test_threshold = 10
 os.environ['PIP_TEST_THRESHOLD'] = str(test_threshold)
 
-def expand( list, flag_lower ):
+def expand( list ):
     if list == [] or list == None:
         return []
 
-    if flag_lower:
-        token = list.pop( 0 ).lower()
-    else:
-        token = list.pop( 0 )
+    token = list.pop( 0 )
 
     if ',' in token:
-        return token.split( ',' ) + expand( list, flag_lower )
+        return token.split( ',' ) + expand( list )
     elif '+' in token:
-        return token.split( '+' ) + expand( list, flag_lower )
-    return [ token ] + expand( list, flag_lower )
+        return token.split( '+' ) + expand( list )
+    return [ token ] + expand( list )
 
 ## check how
-how_list = expand( args.how, True)
+how_list = expand( args.how )
 how_all = [ 'yum', 'docker', 'spack', 'github' ]
 how_ALL = how_all + [ 'git-rccs' ]
 
@@ -403,7 +400,7 @@ if redhat_ver != 7 and redhat_ver != 8:
     err_msg( [ 'RedHat/CentOS-'+str(redhat_ver), 'is not supported' ] )
 
 ## Check PiP version
-version = sorted( set( expand( args.version, False ) ) )
+version = sorted( set( expand( args.version ) ) )
 pip_vers = []
 if 'ALL' in version:
     if redhat_ver == 7:
