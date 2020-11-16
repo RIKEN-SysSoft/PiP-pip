@@ -99,7 +99,7 @@ two options. `pip-pip` will create subdirectories right under the install
 directory (`--prefix') named in the `<ARCH>-<LINUX>-<HOW>-<VER>` style
 and each installation of the combinations will be installed in one of
 those sub-directries.
-When the the specified install directory is ended with `/*`, then the
+When the the specified install directory is ended with `//`, then the
 sub-directory will also be created in the same way even if only a
 single installtion is specified. As with the work directory, those
 subdirectory(ies) are created right under the specified work directory
