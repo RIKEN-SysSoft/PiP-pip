@@ -366,6 +366,11 @@ if len( how_list ) > 1:
     flag_subdir = True
 
 def check_command( command ):
+    global dryrun
+
+    if dryrun:
+        return True
+
     try:
         if sp.check_call( [ 'sh', '-c', 'which ' + command + ' >/dev/null 2>&1' ] ) == 0:
             return True
@@ -965,10 +970,10 @@ if error:
     sys.exit( 1 )
 
 not_ready_list = []
-message( [ '' ] )
+message( [] )
 message( [ 'Redhat/Centos:\t\t', redhat_ver ] )
 message( [ 'CPU Architecture:\t', arch ])
-message( [ '' ] )
+message( [] )
 for how in how_list:
     for ver in pip_vers:
         if ready[ ( how, arch, redhat_ver, ver ) ] or dryrun:
