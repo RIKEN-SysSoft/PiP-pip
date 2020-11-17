@@ -56,29 +56,27 @@ flag_subdir    = False
 spack_path     = None
 dryrun         = False
 flag_quiet     = False
+error          = False
+
+def mesg( words, nl, fs ):
+    if words != []:
+        for word in words[0:-1]:
+            print( word, end=' ', file=fs )
+        if nl:
+            print( words[-1], file=fs )
+        else:
+            print( words[-1], end='', file=fs )
+    elif nl:
+        print( '', file=fs )
+    fs.flush()
 
 def message( words, nl=True, log=None, logonly=False ):
-    global flag_quiet
+    global flag_quiet, dryrun
 
     if not logonly and not flag_quiet:
-        if words != []:
-            for word in words[0:-1]:
-                print( word, end=' ' )
-            if nl:
-                print( words[-1] )
-            else:
-                print( words[-1], end='' )
-        elif nl:
-            print( '' )
-        sys.stdout.flush()
+        mesg( words, nl, sys.stdout )
     if log != None and not dryrun:
-        for word in words[0:-1]:
-            print( word, end=' ', file=log )
-        if nl:
-            print( words[-1], file=log )
-        else:
-            print( words[-1], end='', file=log )
-        log.flush()
+        mesg( words, nl, log )
 
 def err_msg( words, log=None ):
     global error
@@ -89,22 +87,23 @@ def err_msg( words, log=None ):
 def warn_msg( words, log=None ):
     message( [ warn_prefix] + words, log=log )
 
+urlparser = None
 def append_url( url0, url1 ):
-    flag_urllib = False
-    try:
-        import urllib.parse
-        flag_urllib = True
-    except:
+    global urlparser
+
+    if urlparser == None:
         try:
-            import urlparse
-        except:
-            err_msg( [ 'No urllib.pasre (urlparse) module' ] )
-            sys.exit( 1 )
-    if flag_urllib:
-        url = urllib.parse.urljoin( url0+'/', url1 )
-    else:
-        url = urlparse.urljoin( url0+'/', url1 )
-    return url
+            import urllib.parse
+            urlparser = urllib.parse
+        except Exception as e0:
+            try:
+                import urlparse
+                urlparser = urlparse
+            except Exception as e1:
+                err_msg( [ 'No urllib module:',   e0 ] )
+                err_msg( [ 'No urlparse module:', e1 ] )
+                sys.exit( 1 )
+    return urlparser.urljoin( url0+'/', url1 )
 
 git_url_tab  = { 'github'   : 'https://github.com/RIKEN-SysSoft',
                  'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software' }
@@ -192,7 +191,7 @@ ready = { ( 'yum',      'x86_64',  7, 1 ): True,
           ( 'git-rccs', 'aarch64', 8, 3 ): True
 }
 
-null_file = open(os.devnull,'w')
+null_file = open( os.devnull, 'w' )
 git_clone = [ 'git', 'clone' ]
 
 def redhat_version():
@@ -211,7 +210,6 @@ def redhat_version():
         return ver
     except Exception as e:
         err_msg( e )
-        flag_error = True
         return None
 
 def cpu_arch():
@@ -219,7 +217,7 @@ def cpu_arch():
 
 warn_sudo = False
 def is_privileged( log_fs ):
-    global warn_sudo, error
+    global warn_sudo, dryrun, error
 
     user = os.environ['USER']
     if user == 'root':
@@ -316,12 +314,23 @@ if test_threshold < 0:
     test_threshold = 10
 os.environ['PIP_TEST_THRESHOLD'] = str(test_threshold)
 
+def check_command( command ):
+    global dryrun
+
+    if dryrun:
+        return True
+
+    try:
+        if sp.check_call( [ 'sh', '-c', 'which ' + command + ' >/dev/null 2>&1' ] ) == 0:
+            return True
+    except Exception as e:
+        return False
+    return False
+
 def expand( list ):
     if list == [] or list == None:
         return []
-
     token = list.pop( 0 )
-
     if ',' in token:
         return token.split( ',' ) + expand( list )
     elif '+' in token:
@@ -351,7 +360,6 @@ else:
         else:
             err_msg( [ ','.join(errlist), 'are not acceptable values of --how']  )
         parser.print_help()
-        error = True
     else:
         for h in how_ALL:
             if h in how_list:
@@ -362,37 +370,24 @@ else:
 if len( how_list ) > 1:
     flag_subdir = True
 
-def check_command( command ):
-    global dryrun
-
-    if dryrun:
-        return True
-
-    try:
-        if sp.check_call( [ 'sh', '-c', 'which ' + command + ' >/dev/null 2>&1' ] ) == 0:
-            return True
-    except Exception as e:
-        return False
-    return False
-
-error = False
 if 'yum' in how_list:
     if not check_command( 'yum' ):
-        err_msg( [ 'Unable to find YUM command' ] )
-    is_privileged( None )
+        err_msg( [ "'yum' command not found" ] )
+    else:
+        is_privileged( None )
 if 'docker' in how_list:
     if not check_command( 'docker' ):
-        err_msg( [ 'Unable to find DOCKER command' ] )
+        err_msg( [ "'docker' command not found" ] )
     else:
-        spack_path = 'spack'
-    is_privileged( None )
+        is_privileged( None )
 if 'spack' in how_list:
-    if not check_command( 'spack' ):
-        if not check_command( 'git' ):
-            err_msg( [ 'Unable to find GIT command (required to install Spack)' ] )
+    if check_command( 'spack' ):
+        spack_path = 'spack'
+    elif not check_command( 'git' ):
+        err_msg( [ "'git' command not found (required to install Spack)" ] )
 if 'github' in how_list or 'git-rccs' in how_list:
     if not check_command( 'git' ):
-        err_msg( [ 'Unable to find GIT command' ] )
+        err_msg( [ "'git' command not found" ] )
 
 ## check Linux distribution and version
 redhat_ver = redhat_version()
@@ -400,7 +395,7 @@ if redhat_ver != 7 and redhat_ver != 8:
     err_msg( [ 'RedHat/CentOS-'+str(redhat_ver), 'is not supported' ] )
 
 ## Check PiP version
-version = sorted( set( expand( args.version ) ) )
+version = expand( args.version )
 pip_vers = []
 if 'ALL' in version:
     if redhat_ver == 7:
@@ -412,6 +407,7 @@ elif 'all' in version:
 elif version == []:
     pip_vers = [ 2 ]
 else:
+    version = sorted( set( version ) )
     ver_acceptable = [ -1, 2, 3 ]
     errlist     = []
     for ver_str in version:
@@ -438,6 +434,8 @@ if arch != 'x86_64' and arch != 'aarch64':
     err_msg( [ arch, 'is not supported by PiP' ] )
 
 def make_directory( path, flag ):
+    global dryrun
+
     if not dryrun:
         try:
             if os.path.isdir( path ):
@@ -456,35 +454,42 @@ def make_directory( path, flag ):
 
 # check and create prefix dir
 def check_prefix( prefix_arg ):
-    global prompt_prefix
+    global prompt_prefix, dryrun, error
 
     pref = os.path.realpath( os.path.expanduser( prefix_arg ) )
     if dryrun:
         return pref
     elif os.path.isfile( pref ):
         err_msg( [ pref, 'is not a directory but a file' ] )
-        error = True
         return None
     elif os.path.isdir( pref ):
         if not args.force and not prompt_prefix:
             warn_msg( [ 'Prefix directory already exists: ', pref ] )
             while True:
                 try:
-                    prompt = "Are you sure to install in prefix directory? 'yes' or 'no' [y/N]: "
+                    prompt = "Are you sure to install into '"+pref+"' directory? 'yes' or 'no' [y/a/n]: "
                     choice = input( prompt ).lower()
                 except:
                     message( '' )
                     sys.exit( 1 )
 
-                if choice in [ 'y', 'ye', 'yes' ]:
-                    prompt_prefix = True
+                if choice == '':
+                    continue
+                elif choice[0] == 'y':
                     break
-                elif choice in [ 'n', 'no' ]:
-                    sys.exit( 1 )
+                elif choice[0] == 'a':
+                    prompt_prefix = True # never ask again
+                    break
+                elif choice[0] == 'n':
+                    error = True
+                    break
+                else:
+                    continue
     return pref
 
 def prefix_path( prefix, how, ver ):
-    global flag_subdir
+    global flag_subdir, error
+
     if not flag_subdir:
         return prefix
     else:
@@ -495,6 +500,8 @@ def prefix_path( prefix, how, ver ):
                              'pip-' + str( ver ) )
 
 def create_prefix( prefix, how, ver ):
+    global dryrun
+
     pdir = prefix_path( prefix, how, ver )
     if dryrun:
         return pdir
@@ -507,7 +514,7 @@ def create_prefix( prefix, how, ver ):
         return None
 
 def delete_work_dir( wdir ):
-    global args
+    global args, dryrun
 
     if dryrun:
         message( [ '[DRY] Deleting work directory ('+wdir+') .. done' ] )
@@ -550,7 +557,7 @@ def work_path( work, how, ver ):
     return path
 
 def check_work( work ):
-    global prompt_rm_work
+    global prompt_rm_work, dryrun
 
     if os.path.isfile( work ):
         err_msg( [ work, 'is not a directory but a file' ] )
@@ -561,35 +568,39 @@ def check_work( work ):
         return True
     if prompt_rm_work or args.force:
         if not delete_work_dir( work ):
-             error = true
              return False
         return True
 
     warn_msg( [ 'Work directory already exists:', work ] )
     while True:
         try:
-             prompt = "Delete work directory before install? 'yes', 'all' or 'No' [y/a/N]: "
+             prompt = "Delete work directory before install? 'yes', 'all' or 'No' [y/a/n]: "
              choice = input( prompt ).lower()
         except:
              error = True
              return False
 
-        if choice in [ 'y', 'ye', 'yes' ]:
-             break
-        elif choice in [ 'a', 'al', 'all' ]:
-             prompt_rm_work = True
-             break;
-        elif choice in [ 'n', 'no' ]:
-             error = True
-             return False
+        if choice == '':
+            continue
+        elif choice[0] == 'y':
+            break
+        elif choice[0] == 'a':
+            prompt_rm_work = True # never ask again
+            break;
+        elif choice[0] == 'n':
+            error = True
+            return False
         else:
-             continue
+            continue
     if not delete_work_dir( work ):
-        error = True
         return False
     return True
 
 def create_work( work ):
+    global dryrun
+
+    if dryrun:
+        return work, None
     try:
         log_dir = os.path.join( work, 'log' )
         if not os.path.isdir( log_dir ):
@@ -601,6 +612,8 @@ def create_work( work ):
     return work, log_path
 
 def check_file( file ):
+    global dryrun
+
     if dryrun:
         return True
     return os.path.isfile( file )
@@ -644,7 +657,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
     return True, t
 
 def execute( wd, cmd, log_f, log_fs ):
-    global error
+    global dryrun, error
 
     if dryrun:
         message( [ '[DRY]' ] + cmd, log=log_fs )
@@ -679,8 +692,7 @@ def execute( wd, cmd, log_f, log_fs ):
                 time.sleep( 1 )     # wait for stdout/stderr flushing
                 return ret == 0
     except Exception as e:
-        message( [ '\nException:', e ], log=log_fs )
-        error = True
+        err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
 def install_yum( pip_ver, log_f, log_fs ):
@@ -764,8 +776,8 @@ def wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs ):
                     [ './configure', '--prefix=' + prefix_dir ],
                     log_f, log_fs ):
         err_msg( [ 'wget_install: '
-                     './configure', '--prefix='+prefix_dir,
-                     '['+mod_name+'] -- FAILED' ],
+                   './configure', '--prefix='+prefix_dir,
+                   '['+mod_name+'] -- FAILED' ],
                    log=log_fs )
         raise Exception()
     if not execute( mod_work, [ 'make' ], log_f, log_fs ):
@@ -936,7 +948,7 @@ if error:
     sys.exit( 1 )
 
 prefix = args.prefix
-if prefix[-2:] == '//':
+if len(prefix) > 2 and prefix[-2:] == '//':
     flag_subdir=True
     prefix = prefix[0:-2]
 prefix_dir = check_prefix( prefix )
@@ -956,13 +968,11 @@ if error:
 
 ### NOW we can actually do the installation(s)
 
-# check work dir
-
+# check work dir, delete if exists
 for how in how_list:
     for ver in pip_vers:
-        if ready[ ( how, arch, redhat_ver, ver ) ]:
-            if( not check_work( work_path( work_dir, how, ver ) ) ):
-                error = True
+        if ready[ ( how, arch, redhat_ver, ver ) ] or dryrun:
+            check_work( work_path( work_dir, how, ver ) )
 if error:
     sys.exit( 1 )
 
@@ -971,6 +981,7 @@ message( [] )
 message( [ 'Redhat/Centos:\t\t', redhat_ver ] )
 message( [ 'CPU Architecture:\t', arch ])
 message( [] )
+message( [ 'List of installations' ] )
 for how in how_list:
     for ver in pip_vers:
         if ready[ ( how, arch, redhat_ver, ver ) ] or dryrun:
@@ -999,7 +1010,7 @@ if not_ready_list != [] and not dryrun:
         message( [ '\t'+h.upper()+': PiP-v' + str( v ) ] )
     message( [] )
 
-# let's start
+## let's start installation(s)
 list_success = []
 list_failure = []
 list_skipped = []
@@ -1020,35 +1031,39 @@ for h in how_list:
             continue
 
         ( wdir, log_path ) = create_work( work_path( work_dir, h, pip_ver ) )
-        if wdir == None or log_path == None:
+        if wdir == None:
             sys.exit( 1 )
 
         try:
-            with open( log_path, mode='w' ) as log_fs:
+            log_fs = None
+            if not dryrun:
+                log_fs = open( log_path, mode='w' )
                 now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
                 message( [ now_str, sep ], log=log_fs, logonly=True )
 
-                if h == 'yum':
-                    retuple = install_yum(    pip_ver, log_path, log_fs )
-                elif h == 'docker':
-                    retuple = install_docker( pip_ver, log_path, log_fs )
-                elif h == 'spack':
-                    retuple = install_spack( prefix_dir, h, pip_ver, log_path, log_fs )
-                elif h == 'github':
-                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
-                elif h == 'git-rccs':
-                    retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
+            if h == 'yum':
+                retuple = install_yum(    pip_ver, log_path, log_fs )
+            elif h == 'docker':
+                retuple = install_docker( pip_ver, log_path, log_fs )
+            elif h == 'spack':
+                retuple = install_spack( prefix_dir, h, pip_ver, log_path, log_fs )
+            elif h == 'github':
+                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
+            elif h == 'git-rccs':
+                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
 
-                ( ok, ( how, obj, note ) ) = retuple
-                if ok:
-                    list_success.append( ( how, obj, note ) )
-                    message( [ msg_exit,  h, 'install', obj, 'OK' ], log=log_fs )
-                else:
-                    list_failure.append( ( how, obj, log_path ) )
-                    err_msg( [ h, 'install', obj, 'NG' ], log=log_fs )
+            ( ok, ( how, obj, note ) ) = retuple
+            if ok:
+                list_success.append( ( how, obj, note ) )
+                message( [ msg_exit,  h, 'install', obj, 'OK' ], log=log_fs )
+            else:
+                list_failure.append( ( how, obj, log_path ) )
+                err_msg( [ h, 'install', obj, 'NG' ], log=log_fs )
 
+            if not dryrun:
                 now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
                 message( [ sep, now_str ], log=log_fs, logonly=True )
+                log_fs.close()
 
         except Exception as e:
             err_msg( [ e ] )
@@ -1070,6 +1085,8 @@ if not args.keep:
         delete_work_dir( wdir )
     else:
         message( [ 'the work dir is not deleted due to the error' ] )
+
+## Summary
 
 yum_success    = False
 docker_success = False
@@ -1102,15 +1119,15 @@ if list_failure != []:
         else:
             message( [ how, obj, ' **LOG:', log_path ] )
 
-    if yum_success or docker_success:
-        message( [ '\nNote' ] )
+if yum_success or docker_success:
+    message( [ '\nNote' ] )
 
-    if yum_success:
-        message( [ 'YUM: PiP package is installed at /usr' ] )
+if yum_success:
+    message( [ 'YUM: PiP package is installed at /usr' ] )
 
-    if docker_success:
-        message( [ 'DOCKER: To run the PiP Docker image:' ] )
-        message( [ '        $ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
+if docker_success:
+    message( [ 'DOCKER: To run the PiP Docker image:' ] )
+    message( [ '\t$ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
 
 null_file.close()
 if list_failure != []:
