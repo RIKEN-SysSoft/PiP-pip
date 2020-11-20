@@ -662,7 +662,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
             elif t >= 3600*10:
                 tu = t / 3600.0
                 unit = 'h'
-            message( [ ' '+str(int(tu))+unit ] )
+            message( [ ' '+str(int(tu))+unit ], newline=False )
             if ret is None:
                 return ret, t
             if ret != 0:
