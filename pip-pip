@@ -645,7 +645,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
     "do poll and output dots"
 
     delta = 0.2
-    if t > 100:
+    if t > 120:
         delta = 1.0
     elif t > 1000:
         delta = 10.0
@@ -662,7 +662,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
             elif t >= 3600*10:
                 tu = t / 3600.0
                 unit = 'h'
-            message( [ ' '+str(int(tu))+unit ], newline=False )
+            message( [ str(int(tu))+unit ], newline=False )
             if ret is None:
                 return ret, t
             if ret != 0:
@@ -1089,6 +1089,7 @@ for h in how_list:
             message( [ '\n^C' ] )
             NULL_FILE.close()
             sys.exit( 1 )
+        message( [] )
 
 if list_success == [] and list_failure == []:
     # this should not happen
