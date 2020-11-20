@@ -204,24 +204,22 @@ ready = { ( 'yum',      'x86_64',  7, 1 ): True,
 NULL_FILE = open( os.devnull, 'w' )
 git_clone = [ 'git', 'clone' ]
 
-def redhat_version():
+def get_redhat_version():
     "obtain RedHat version"
-    ver = None
     try:
         with open( '/etc/redhat-release', mode='r' ) as f:
             rhel = f.readline().split()
             while True:
                 if rhel == []:
-                    raise Exception( 'Unknown readhat-release content' )
-                token = rhel.pop( 0 )
+                    raise Exception( 'Unknown /etc/readhat-release content' )
+                token = rhel.pop(0)
                 if token == 'release':
-                    verstr = rhel.pop( 0 )
+                    verstr = rhel.pop(0)
                     ver = int( verstr.split( '.' ).pop( 0 ) )
-                    break
-        return ver
-    except Exception as e:
-        err_msg( e )
-        return None
+                    return ver
+    except Exception:
+        err_msg( [ "Not RedHat distribution" ] )
+        sys.exit( 1 )
 
 def cpu_arch():
     "obtain CPU architecture"
@@ -405,15 +403,16 @@ if 'github' in how_list or 'git-rccs' in how_list:
         err_msg( [ "'git' command not found" ] )
 
 ## check Linux distribution and version
-redhat_ver = redhat_version()
-if not redhat_ver in [ 7, 8 ]:
-    err_msg( [ 'RedHat/CentOS-'+str(redhat_ver), 'is not supported' ] )
+redhat_version = get_redhat_version()
+if not redhat_version in [ 7, 8 ]:
+    err_msg( [ 'RedHat/CentOS-'+str(redhat_version), 'is not supported' ] )
+    sys.exit( 1 )
 
 ## Check PiP version
 version = expand( ARGS.version )
 pip_vers = []
 if 'ALL' in version:
-    if redhat_ver == 7:
+    if redhat_version == 7:
         pip_vers = [ 1, 2, 3 ]
     else:
         pip_vers = [ 2, 3 ]
@@ -512,7 +511,7 @@ def prefix_path( prefix, how, ver ):
         return prefix
     return os.path.join( prefix,
                          arch + '_' +
-                         'redhat-' + str( redhat_ver ) + '_' +
+                         'redhat-' + str( redhat_version ) + '_' +
                          how + '_' +
                          'pip-' + str( ver ) )
 
@@ -570,10 +569,10 @@ def delete_work_dir( wdir ):
 # check and create work dir
 def work_path( work, how, ver ):
     "create work directory path"
-    global arch, redhat_ver
+    global arch, redhat_version
     path = os.path.join( work,
                          arch + '_' +
-                         'redhat-' + str( redhat_ver ) + '_' +
+                         'redhat-' + str( redhat_version ) + '_' +
                          how + '_' +
                          'pip-' + str( ver ) )
     return path
@@ -665,6 +664,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
                 unit = 'h'
             if ret is not None:
                 message( [ ' '+str(int(tu))+unit ] )
+                break
             return ret, t
         if td >= inc:
             t += inc
@@ -713,9 +713,7 @@ def execute( wd, cmd, log_fs ):
             ( ret, t ) = do_poll( proc, t, dot, inc, tmax, log_fs )
             if ret is not None:
                 time.sleep( 1 )     # wait for stdout/stderr flushing
-                if ret == 0:
-                    return True
-                return False
+                return ret
     except Exception as e:
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
@@ -816,7 +814,7 @@ def wget_install( work_dir, prefix_dir, pkgname, url, log_fs ):
 
 def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     "Git (source) install"
-    global ARGS, redhat_ver, git_clone, NULL_FILE
+    global ARGS, redhat_version, git_clone, NULL_FILE
 
     branch_pip = 'pip-' + str( pip_ver )
 
@@ -840,13 +838,14 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     repo_test  = append_url( git_repo, git_repo_tab[repo]['test']  )
     git_pip = repo_pip + '@' + branch_pip
     retuple = ( 'git', git_pip, '' )
-    if redhat_ver == 7:
+    if redhat_version == 7:
         ( branch_glibc, branch_gdb ) = gnu_branch_tab[7]
-    elif redhat_ver == 8:
+    elif redhat_version == 8:
         ( branch_glibc, branch_gdb ) = gnu_branch_tab[8]
     else:
-        err_msg( [ 'Unsupported RedHat/CentOS version:', str( redhat_ver ) ],
-                   log=log_fs )
+        err_msg( [ 'Unsupported RedHat/CentOS version:',
+                   str( redhat_version ) ],
+                 log=log_fs )
         return False, retuple
 
     prefix_dir = create_prefix( prefix, repo, pip_ver )
@@ -992,7 +991,7 @@ if ERROR:
 # check work dir, delete if exists
 for how in how_list:
     for ver in pip_vers:
-        if ready[ ( how, arch, redhat_ver, ver ) ] or DRYRUN:
+        if ready[ ( how, arch, redhat_version, ver ) ] or DRYRUN:
             check_work( work_path( work_dir, how, ver ) )
 if ERROR:
     NULL_FILE.close()
@@ -1000,13 +999,13 @@ if ERROR:
 
 not_ready_list = []
 message( [] )
-message( [ 'Redhat/Centos:\t\t', redhat_ver ] )
+message( [ 'Redhat/Centos:\t\t', redhat_version ] )
 message( [ 'CPU Architecture:\t', arch ])
 message( [] )
 message( [ 'List of installations' ] )
 for how in how_list:
     for ver in pip_vers:
-        if ready[ ( how, arch, redhat_ver, ver ) ] or DRYRUN:
+        if ready[ ( how, arch, redhat_version, ver ) ] or DRYRUN:
             message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
             if how == 'spack' and spack_path != 'spack':
                 message( [ '  Prefix dir:\t', prefix_path( prefix_dir, how, ver ) ] )
@@ -1044,8 +1043,8 @@ for h in how_list:
     for pip_ver in pip_vers:
         ERROR = False
 
-        if not ready[ ( h, arch, redhat_ver, pip_ver ) ] and not DRYRUN:
-            list_skipped.append( ( h, arch, redhat_ver, pip_ver ) )
+        if not ready[ ( h, arch, redhat_version, pip_ver ) ] and not DRYRUN:
+            list_skipped.append( ( h, arch, redhat_version, pip_ver ) )
             continue
 
         ( wdir, log_path ) = create_work( work_path( work_dir, h, pip_ver ) )
