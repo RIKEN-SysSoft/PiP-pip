@@ -693,7 +693,7 @@ def execute( wd, cmd, log_fs ):
         return False
 
     try:
-        message( [ MSG_PREFIX ] + cmd, log=log_fs )
+        message( [ MSG_PREFIX ] + cmd, newline=False, log=log_fs )
         if wd is not None:
             cmd_list = [ 'cd', wd, '&&' ] + cmd
         else:
