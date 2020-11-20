@@ -656,16 +656,20 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
         if ret is not None or t >= tmax:
             tu = t
             unit = 's'
-            if t >= 60:
-                tu = t / 60
+            if t >= 120:
+                tu = t / 60.0
                 unit = 'm'
-            elif t >= 3600:
-                tu = t / 3600
+            elif t >= 3600*10:
+                tu = t / 3600.0
                 unit = 'h'
-            if ret is not None:
-                message( [ ' '+str(int(tu))+unit ] )
-                break
-            return ret, t
+            message( [ ' '+str(int(tu))+unit ] )
+            if ret is None:
+                return ret, t
+            if ret != 0:
+                message( [ ' - NG' ], log=log_fs )
+                return False, t
+            message( [ ' - OK' ], log=log_fs )
+            return True, t
         if td >= inc:
             t += inc
             td = 0.0
@@ -673,12 +677,6 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
 
         time.sleep( delta )
         td += delta
-
-    if ret != 0:
-        message( [ ' - NG' ], log=log_fs )
-        return False, t
-    message( [ ' - OK' ], log=log_fs )
-    return True, t
 
 def execute( wd, cmd, log_fs ):
     "execute a Linux command"
@@ -704,11 +702,12 @@ def execute( wd, cmd, log_fs ):
         message( ' ', newline=False )
         inctab = [ ( '.',       1,       10 ),
                    ( '.',       6,       60 ),
-                   ( '.',      60,      600 ),
-                   ( '.',     600,     3600 ),
+                   ( '.',      60,      360 ),
+                   ( '.',     360,     3600 ),
                    ( '.',    3600,  24*3600 ),
                    ( '.', 24*3600, 9999*999 ) ]
         t = 0
+        message( [ '.' ], newline=False )
         for ( dot, inc, tmax ) in inctab:
             ( ret, t ) = do_poll( proc, t, dot, inc, tmax, log_fs )
             if ret is not None:
