@@ -472,7 +472,7 @@ def check_prefix( prefix_arg ):
                     prompt = "Are you sure to install into '"+pref+"' directory? 'yes' or 'no' [y/a/n]: "
                     choice = input( prompt ).lower()
                 except:
-                    message( '' )
+                    message( [] )
                     sys.exit( 1 )
 
                 if choice == '':
@@ -670,7 +670,7 @@ def execute( wd, cmd, log_f, log_fs ):
         return False
 
     try:
-        message( [ msg_prefix ] + cmd, log=log_fs )
+        message( [ msg_prefix ] + cmd, nl=False, log=log_fs )
         redirect = [ '>>', log_f, '2>&1', '<', '/dev/null' ]
         if wd == None:
             cmd_list = cmd + redirect
