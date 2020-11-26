@@ -42,21 +42,22 @@ import sys
 import subprocess as sp
 import re
 
-docker_img   = 'rikenpip/pipv'
+docker_img   = 'rikenpip/pip-v'
 
-spack_url    = 'https://github.com/spack/spack.git'
+spack_url     = 'https://github.com/spack/spack.git'
+spack_url_dev = 'git@git.sys.r-ccs.riken.jp:software/PIP-Spack.git'
 
-git_url_tab  = { 'github'   : 'https://github.com/RIKEN-SysSoft',
+git_url_tab   = { 'github'   : 'https://github.com/RIKEN-SysSoft',
                  'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software' }
 
-git_repo_tab = { 'github'   : { 'glibc': 'PiP-glibc.git',
-                                'pip'  : 'PiP.git',
-                                'gdb'  : 'PiP-gdb.git',
-                                'test' : 'PiP-Testsuite.git' },
-                 'git-rccs' : { 'glibc': 'PIP-glibc.git',
-                                'pip'  : 'PIP.git',
-                                'gdb'  : 'PIP-gdb.git',
-                                'test' : 'PIP-Testsuite.git' } }
+git_repo_tab  = { 'github'   : { 'glibc': 'PiP-glibc.git',
+                                 'pip'  : 'PiP.git',
+                                 'gdb'  : 'PiP-gdb.git',
+                                 'test' : 'PiP-Testsuite.git' },
+                  'git-rccs' : { 'glibc': 'PIP-glibc.git',
+                                 'pip'  : 'PIP.git',
+                                 'gdb'  : 'PIP-gdb.git',
+                                 'test' : 'PIP-Testsuite.git' } }
 
 gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ),
@@ -64,70 +65,70 @@ gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ) }
 
 # Ready list: (how, arch, redhat, pip )
-ready = { ( 'yum',      'x86_64',  7, 1 ): True,
-          ( 'yum',      'x86_64',  7, 2 ): False,
-          ( 'yum',      'x86_64',  7, 3 ): False,
-          ( 'yum',      'x86_64',  8, 1 ): False,
-          ( 'yum',      'x86_64',  8, 2 ): False,
-          ( 'yum',      'x86_64',  8, 3 ): False,
-          ( 'yum',      'aarch64', 7, 1 ): False,
-          ( 'yum',      'aarch64', 7, 2 ): False,
-          ( 'yum',      'aarch64', 7, 3 ): False,
-          ( 'yum',      'aarch64', 8, 1 ): False,
-          ( 'yum',      'aarch64', 8, 2 ): False,
-          ( 'yum',      'aarch64', 8, 3 ): False,
+ready = { ( 'yum',      'x86_64',  7, 1 ): ( True,  True  ),
+          ( 'yum',      'x86_64',  7, 2 ): ( False, False ),
+          ( 'yum',      'x86_64',  7, 3 ): ( False, False ),
+          ( 'yum',      'x86_64',  8, 1 ): ( False, False ),
+          ( 'yum',      'x86_64',  8, 2 ): ( False, False ),
+          ( 'yum',      'x86_64',  8, 3 ): ( False, False ),
+          ( 'yum',      'aarch64', 7, 1 ): ( False, False ),
+          ( 'yum',      'aarch64', 7, 2 ): ( False, False ),
+          ( 'yum',      'aarch64', 7, 3 ): ( False, False ),
+          ( 'yum',      'aarch64', 8, 1 ): ( False, False ),
+          ( 'yum',      'aarch64', 8, 2 ): ( False, False ),
+          ( 'yum',      'aarch64', 8, 3 ): ( False, False ),
 
-          ( 'docker',   'x86_64',  7, 1 ): True,
-          ( 'docker',   'x86_64',  7, 2 ): False,
-          ( 'docker',   'x86_64',  7, 3 ): False,
-          ( 'docker',   'x86_64',  8, 1 ): False,
-          ( 'docker',   'x86_64',  8, 2 ): False,
-          ( 'docker',   'x86_64',  8, 3 ): False,
-          ( 'docker',   'aarch64', 7, 1 ): False,
-          ( 'docker',   'aarch64', 7, 2 ): False,
-          ( 'docker',   'aarch64', 7, 3 ): False,
-          ( 'docker',   'aarch64', 8, 1 ): False,
-          ( 'docker',   'aarch64', 8, 2 ): False,
-          ( 'docker',   'aarch64', 8, 3 ): False,
+          ( 'docker',   'x86_64',  7, 1 ): ( True,  True  ),
+          ( 'docker',   'x86_64',  7, 2 ): ( False, False ),
+          ( 'docker',   'x86_64',  7, 3 ): ( False, False ),
+          ( 'docker',   'x86_64',  8, 1 ): ( False, False ),
+          ( 'docker',   'x86_64',  8, 2 ): ( False, False ),
+          ( 'docker',   'x86_64',  8, 3 ): ( False, False ),
+          ( 'docker',   'aarch64', 7, 1 ): ( False, False ),
+          ( 'docker',   'aarch64', 7, 2 ): ( False, False ),
+          ( 'docker',   'aarch64', 7, 3 ): ( False, False ),
+          ( 'docker',   'aarch64', 8, 1 ): ( False, False ),
+          ( 'docker',   'aarch64', 8, 2 ): ( False, False ),
+          ( 'docker',   'aarch64', 8, 3 ): ( False, False ),
 
-          ( 'spack',    'x86_64',  7, 1 ): True,
-          ( 'spack',    'x86_64',  7, 2 ): False,
-          ( 'spack',    'x86_64',  7, 3 ): False,
-          ( 'spack',    'x86_64',  8, 1 ): False,
-          ( 'spack',    'x86_64',  8, 2 ): False,
-          ( 'spack',    'x86_64',  8, 3 ): False,
-          ( 'spack',    'aarch64', 7, 1 ): False,
-          ( 'spack',    'aarch64', 7, 2 ): False,
-          ( 'spack',    'aarch64', 7, 3 ): False,
-          ( 'spack',    'aarch64', 8, 1 ): False,
-          ( 'spack',    'aarch64', 8, 2 ): False,
-          ( 'spack',    'aarch64', 8, 3 ): False,
+          ( 'spack',    'x86_64',  7, 1 ): ( False, False ),
+          ( 'spack',    'x86_64',  7, 2 ): ( False, True  ),
+          ( 'spack',    'x86_64',  7, 3 ): ( False, True  ),
+          ( 'spack',    'x86_64',  8, 1 ): ( False, False ),
+          ( 'spack',    'x86_64',  8, 2 ): ( False, True  ),
+          ( 'spack',    'x86_64',  8, 3 ): ( False, True  ),
+          ( 'spack',    'aarch64', 7, 1 ): ( False, False ),
+          ( 'spack',    'aarch64', 7, 2 ): ( False, True  ),
+          ( 'spack',    'aarch64', 7, 3 ): ( False, True  ),
+          ( 'spack',    'aarch64', 8, 1 ): ( False, False ),
+          ( 'spack',    'aarch64', 8, 2 ): ( False, True  ),
+          ( 'spack',    'aarch64', 8, 3 ): ( False, True  ),
 
-          ( 'github',   'x86_64',  7, 1 ): True,
-          ( 'github',   'x86_64',  7, 2 ): True,
-          ( 'github',   'x86_64',  7, 3 ): True,
-          ( 'github',   'x86_64',  8, 1 ): False,
-          ( 'github',   'x86_64',  8, 2 ): True,
-          ( 'github',   'x86_64',  8, 3 ): True,
-          ( 'github',   'aarch64', 7, 1 ): True,
-          ( 'github',   'aarch64', 7, 2 ): True,
-          ( 'github',   'aarch64', 7, 3 ): True,
-          ( 'github',   'aarch64', 8, 1 ): False,
-          ( 'github',   'aarch64', 8, 2 ): True,
-          ( 'github',   'aarch64', 8, 3 ): True,
+          ( 'github',   'x86_64',  7, 1 ): ( True,  True  ),
+          ( 'github',   'x86_64',  7, 2 ): ( True,  True  ),
+          ( 'github',   'x86_64',  7, 3 ): ( True,  True  ),
+          ( 'github',   'x86_64',  8, 1 ): ( False, False ),
+          ( 'github',   'x86_64',  8, 2 ): ( True,  True  ),
+          ( 'github',   'x86_64',  8, 3 ): ( True,  True  ),
+          ( 'github',   'aarch64', 7, 1 ): ( True,  True  ),
+          ( 'github',   'aarch64', 7, 2 ): ( True,  True  ),
+          ( 'github',   'aarch64', 7, 3 ): ( True,  True  ),
+          ( 'github',   'aarch64', 8, 1 ): ( False, False ),
+          ( 'github',   'aarch64', 8, 2 ): ( True,  True  ),
+          ( 'github',   'aarch64', 8, 3 ): ( True,  True  ),
 
-          ( 'git-rccs', 'x86_64',  7, 1 ): True,
-          ( 'git-rccs', 'x86_64',  7, 2 ): True,
-          ( 'git-rccs', 'x86_64',  7, 3 ): True,
-          ( 'git-rccs', 'x86_64',  8, 1 ): False,
-          ( 'git-rccs', 'x86_64',  8, 2 ): True,
-          ( 'git-rccs', 'x86_64',  8, 3 ): True,
-          ( 'git-rccs', 'aarch64', 7, 1 ): True,
-          ( 'git-rccs', 'aarch64', 7, 2 ): True,
-          ( 'git-rccs', 'aarch64', 7, 3 ): True,
-          ( 'git-rccs', 'aarch64', 8, 1 ): False,
-          ( 'git-rccs', 'aarch64', 8, 2 ): True,
-          ( 'git-rccs', 'aarch64', 8, 3 ): True
+          ( 'git-rccs', 'x86_64',  7, 1 ): ( True,  True  ),
+          ( 'git-rccs', 'x86_64',  7, 2 ): ( True,  True  ),
+          ( 'git-rccs', 'x86_64',  7, 3 ): ( True,  True  ),
+          ( 'git-rccs', 'x86_64',  8, 1 ): ( False, False ),
+          ( 'git-rccs', 'x86_64',  8, 2 ): ( True,  True  ),
+          ( 'git-rccs', 'x86_64',  8, 3 ): ( True,  True  ),
+          ( 'git-rccs', 'aarch64', 7, 1 ): ( True,  True  ),
+          ( 'git-rccs', 'aarch64', 7, 2 ): ( True,  True  ),
+          ( 'git-rccs', 'aarch64', 7, 3 ): ( True,  True  ),
+          ( 'git-rccs', 'aarch64', 8, 1 ): ( False, False ),
+          ( 'git-rccs', 'aarch64', 8, 2 ): ( True,  True  ),
+          ( 'git-rccs', 'aarch64', 8, 3 ): ( True,  True  )
 }
 
 msg_enter   = '>>>'
@@ -178,7 +179,7 @@ def warn_msg( words, log=None ):
     message( [ warn_prefix] + words, log=log )
 
 urlparser = None
-def append_url( url0, url1 ):
+def concat_urls( url0, url1 ):
     global urlparser
 
     if urlparser == None:
@@ -221,7 +222,7 @@ def cpu_arch():
 
 warn_sudo = False
 def is_privileged( log_fs ):
-    global warn_sudo, dryrun, error
+    global sudo_cmd, warn_sudo, dryrun, error
 
     user = os.environ['USER']
     if user == 'root':
@@ -288,11 +289,8 @@ parser.add_argument( '--keep', '-k',
 parser.add_argument( '--sudo', '-s',
                      help    = 'allow sudo (yum, docker)',
                      action  = 'store_true' )
-parser.add_argument( '--dryrun', '-d',
-                     help    = 'dry run',
-                     action  = 'store_true' )
-parser.add_argument( '--force', '-f',
-                     help    = 'do not prompt user',
+parser.add_argument( '--yes', '-y',
+                     help    = "answer 'yes' to the prompt(s)",
                      action  = 'store_true' )
 parser.add_argument( '--quiet', '-q',
                      help    = 'quiet mode',
@@ -303,17 +301,29 @@ parser.add_argument( '--noglibc', '-noglibc',
 parser.add_argument( '--nogdb', '-nogdb',
                      help    = 'do not build PiP_gdb (github)',
                      action  = 'store_true' )
-parser.add_argument( '--test', '-t',
+parser.add_argument( '--develop',
+                     help    = 'To develop PiP-pip',
+                     action  = 'store_true' )
+parser.add_argument( '--notest', '-notest',
+                     help    = 'Not to test installed PiP',
+                     action  = 'store_true' )
+parser.add_argument( '--noupdate', '-noupdate',
+                     help    = 'Do not update if PiP is already installed',
+                     action  = 'store_true' )
+parser.add_argument( '--threshold', '-t',
                      type    = int,
                      nargs   = '?',
                      default = 10,
                     help     = 'The threshold of the number of PiP testsuite errors (default 10)' )
+parser.add_argument( '--dryrun', '--dry', '-d',
+                     help    = 'dry run',
+                     action  = 'store_true' )
 args = parser.parse_args()
 
 dryrun     = args.dryrun
 flag_quiet = args.quiet
 
-test_threshold = args.test
+test_threshold = args.threshold
 if test_threshold < 0:
     test_threshold = 10
 os.environ['PIP_TEST_THRESHOLD'] = str(test_threshold)
@@ -467,7 +477,7 @@ def check_prefix( prefix_arg ):
         err_msg( [ pref, 'is not a directory but a file' ] )
         return None
     elif os.path.isdir( pref ):
-        if not args.force and not prompt_prefix:
+        if not args.yes and not prompt_prefix:
             warn_msg( [ 'Prefix directory already exists: ', pref ] )
             while True:
                 try:
@@ -570,7 +580,7 @@ def check_work( work ):
         return True
     if dryrun:
         return True
-    if prompt_rm_all or args.force:
+    if prompt_rm_all or args.yes:
         if not delete_work_dir( work ):
              return False
         return True
@@ -703,23 +713,44 @@ def execute( wd, cmd, log_fs ):
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
-def install_yum( pip_ver, log_fs ):
+def install_yum( pip_ver, work_dir, log_fs ):
+    global args
+
     yum_pip = 'process-in-process-v' + str( pip_ver )
 
-    retuple = ( 'yum', yum_pip, '' )
     message( [ msg_enter, 'Yum install', yum_pip ], log=log_fs )
 
-    if execute( None, sudo_cmd + [ 'yum', 'reinstall', '-y', yum_pip ], log_fs ):
-        return True, retuple
-    return False, retuple
+    retuple = ( 'yum', yum_pip, '' )
+    if not execute( None, sudo_cmd + [ 'yum', 'reinstall', '-y', yum_pip ], log_fs ):
+        return False, retuple
+
+    if not args.notest:
+        repo_test  = concat_urls( git_url_tab['github'],
+                                  git_repo_tab['github']['test']  )
+
+        message( [ msg_prefix1, 'Testing', repo_test ], log=log_fs )
+        if not execute( work_dir, git_clone + [ repo_test ], log_fs ):
+            return False, retuple
+        test_dir = os.path.join( work_dir, pip + '-Testsuite' )
+        configure = os.path.join( test_dir, 'configure' )
+        if not execute( test_dir,
+                        [ configure, '--with-pip=/usr' ],
+                        log_fs ):
+            return False, retuple
+        if not execute( test_dir, [ 'make', 'test' ], log_fs ):
+            return False, retuple
+    return True, retuple
 
 def install_docker( pip_ver, log_fs ):
-    docker_pip = docker_img + str( pip_ver )
-    retuple = ( 'docker', docker_pip, '' )
     message( [ msg_enter, 'Docker install', docker_pip ], log=log_fs )
 
+    docker_pip = docker_img + str( pip_ver )
+    retuple = ( 'docker', docker_pip, '' )
     if execute( None,
                 sudo_cmd + [ 'docker', 'inspect', docker_pip ], log_fs ):
+        if args.noupdate:
+            return True, retuple
+
         message( [ msg_prefix1, 'Removing existing image', docker_pip ], log=log_fs )
         if not execute( None,
                         sudo_cmd + [ 'docker', 'rmi', docker_pip ],
@@ -728,37 +759,49 @@ def install_docker( pip_ver, log_fs ):
                        log=log_fs )
             return False, retuple
     message( [ msg_prefix1, 'Pulling existing image', docker_pip ], log=log_fs )
-    if execute( None,
-                sudo_cmd + [ 'docker', 'pull', docker_pip ],
-                log_fs ):
-        return True, retuple
-    return False, retuple
+    if not execute( None, sudo_cmd + [ 'docker', 'pull', docker_pip ], log_fs ):
+        return False, retuple
+    return True, retuple
 
 def install_spack( prefix, how, pip_ver, log_fs ):
     global args, spack_path, git_clone
 
     spack_pip = 'process-in-process@' + str( pip_ver )
 
-    retuple = ( 'spack', spack_pip, '' )
     message( [ msg_enter, 'Spack install', spack_pip ], log=log_fs )
 
+    retuple = ( 'spack', spack_pip, '' )
     if spack_path is None:
         prefix_dir = create_prefix( prefix, how, pip_ver )
-        if prefix_dir == None:
+        if prefix_dir is None:
             return False, retuple
-        message( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log=log_fs )
-        if not execute( prefix_dir, git_clone + [ spack_url ], log_fs ):
-            spack_path = ''     # mark as not found
-            return False, retuple
-        spack_path = os.path.join( prefix_dir, 'spack', 'bin', 'spack' )
+
+        if not args.develop:
+            url = spack_url
+        else:
+            url = spack_url_dev
+        bsnam = os.path.splitext( os.path.basename( url ) )[0]
+        spack_dir = os.path.join( prefix, bsnam )
+        if os.path.isdir( os.path.join( spack_dir, '.git' ) ):
+            message( [ msg_prefix1, 'Pulling Spack at', prefix_dir ], log=log_fs )
+            if not execute( spack_dir, [ 'git', 'pull', url ], log_fs ):
+                return False, retuple
+        else:
+            message( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log=log_fs )
+            if not execute( prefix_dir, git_clone + [ url ], log_fs ):
+                spack_path = ''     # mark as not found
+                return False, retuple
+        spack_path = os.path.join( prefix_dir, bsnam, 'bin', 'spack' )
 
     retuple = ( 'spack', spack_pip, spack_path )
     if execute( None, [ spack_path, 'find', spack_pip ], log_fs ):
+        if args.noupdate:
+            return True, retuple
         message( [ msg_prefix1, 'Uninstalling', spack_pip ], log=log_fs )
         if not execute( None, [ spack_path, 'uninstall', '-y', spack_pip ], log_fs ):
             return False, retuple
     message( [ msg_prefix1, 'Installing', spack_pip ], log=log_fs )
-    if not execute( None, [ spack_path, 'install', '--test=all',  spack_pip ],
+    if not execute( None, [ spack_path, 'install',  spack_pip ],
                     log_fs ):
         return False, retuple
     return True, retuple
@@ -814,10 +857,10 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     message( [ msg_enter, 'Git install', git_repo, 'PiP-v'+str( pip_ver ) ],
              log=log_fs )
 
-    repo_glibc = append_url( git_repo, git_repo_tab[repo]['glibc'] )
-    repo_pip   = append_url( git_repo, git_repo_tab[repo]['pip']   )
-    repo_gdb   = append_url( git_repo, git_repo_tab[repo]['gdb']   )
-    repo_test  = append_url( git_repo, git_repo_tab[repo]['test']  )
+    repo_glibc = concat_urls( git_repo, git_repo_tab[repo]['glibc'] )
+    repo_pip   = concat_urls( git_repo, git_repo_tab[repo]['pip']   )
+    repo_gdb   = concat_urls( git_repo, git_repo_tab[repo]['gdb']   )
+    repo_test  = concat_urls( git_repo, git_repo_tab[repo]['test']  )
     git_pip = repo_pip + '@' + branch_pip
     retuple = ( 'git', git_pip, '' )
     if redhat_ver == 7:
@@ -888,17 +931,18 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     if not execute( pip_dir, [ 'make', 'doc-install' ], log_fs ):
         return False, retuple
 
-    message( [ msg_prefix1, 'Testing', repo_pip ], log=log_fs )
-    if not execute( work_dir, git_clone + [ repo_test ], log_fs ):
-        return False, retuple
-    test_dir = os.path.join( work_dir, pip + '-Testsuite' )
-    configure = os.path.join( test_dir, 'configure' )
-    if not execute( test_dir,
-                    [ configure, '--with-pip=' + prefix_dir ],
-                    log_fs ):
-        return False, retuple
-    if not execute( test_dir, [ 'make', 'test' ], log_fs ):
-        return False, retuple
+    if not args.notest:
+        message( [ msg_prefix1, 'Testing', repo_pip ], log=log_fs )
+        if not execute( work_dir, git_clone + [ repo_test ], log_fs ):
+            return False, retuple
+        test_dir = os.path.join( work_dir, pip + '-Testsuite' )
+        configure = os.path.join( test_dir, 'configure' )
+        if not execute( test_dir,
+                        [ configure, '--with-pip=' + prefix_dir ],
+                        log_fs ):
+            return False, retuple
+        if not execute( test_dir, [ 'make', 'test' ], log_fs ):
+            return False, retuple
 
     if args.noglibc or args.nogdb:
         message( [ msg_prefix1, 'Skipping PiP-gdb build (--noglibc or --nogdb)' ], log=log_fs )
@@ -973,10 +1017,20 @@ if error:
 
 ### NOW we can actually do the installation(s)
 
+def is_ready( how, arch, redhat_ver, pip_ver ):
+    global args, dryrun
+
+    if dryrun:
+        return True
+    (deploy, develop) = ready[how,arch,redhat_ver,pip_ver]
+    if not args.develop:
+        return deploy
+    return develop
+
 # check work dir, delete if exists
 for how in how_list:
     for ver in pip_vers:
-        if ready[ ( how, arch, redhat_ver, ver ) ] or dryrun:
+        if is_ready( how, arch, redhat_ver, ver ):
             check_work( work_path( work_dir, how, ver ) )
 if error:
     sys.exit( 1 )
@@ -989,7 +1043,7 @@ message( [] )
 message( [ 'List of installations' ] )
 for how in how_list:
     for ver in pip_vers:
-        if ready[ ( how, arch, redhat_ver, ver ) ] or dryrun:
+        if is_ready( how, arch, redhat_ver, ver ) :
             message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
             if how == 'spack' and spack_path != 'spack':
                 message( [ '  Prefix dir:\t', prefix_path( prefix_dir, how, ver ) ] )
@@ -1004,12 +1058,10 @@ for how in how_list:
 message( [] )
 
 if not_ready_list != [] and not dryrun:
-    warn_msg( [ 'The' ], nl=False )
     if len( not_ready_list ) == 1:
-        message( [ 'following is ' ], nl=False )
+        warn_msg( [ 'The following is not ready and installtion will be skipped' ] )
     else:
-        message( [ 'followings are ' ], nl=False )
-    message( [ 'not ready and installtion will be skipped' ] )
+        warn_msg( [ 'The followings are not ready and installtion will be skipped' ] )
 
     for ( h, v ) in not_ready_list:
         message( [ '\t'+h.upper()+': PiP-v' + str( v ) ] )
@@ -1047,7 +1099,7 @@ for h in how_list:
                 message( [ now_str, sep ], log=log_fs, logonly=True )
 
             if h == 'yum':
-                retuple = install_yum(    pip_ver, log_fs )
+                retuple = install_yum(    pip_ver, wdir, log_fs )
             elif h == 'docker':
                 retuple = install_docker( pip_ver, log_fs )
             elif h == 'spack':

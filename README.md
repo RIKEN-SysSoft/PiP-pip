@@ -96,9 +96,12 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 The `--how` and/or `--version` options may have mutiple values. In this
 case, `pip-pip` will try to install all possible combinations of the
 two options. `pip-pip` will create subdirectories right under the install
-directory (`--prefix') named in the `<ARCH>-<LINUX>-<HOW>-<VER>` style
-and each installation of the combinations will be installed in one of
-those sub-directries.
+directory (`--prefix`) named in the
+
+    <ARCH>-<LINUX>-<HOW>-<PIP-VERSION>
+
+style and each installation of the combinations will be installed in
+one of those sub-directries.
 When the the specified install directory is ended with `//`, then the
 sub-directory will also be created in the same way even if only a
 single installtion is specified. As with the work directory, those
