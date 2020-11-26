@@ -42,70 +42,9 @@ import sys
 import subprocess as sp
 import re
 
-msg_enter   = '>>>'
-msg_exit    = '<<<'
-msg_error   = '<<E'
-msg_prefix  ='---'
-msg_prefix1 ='###'
-err_prefix  ='ERROR:'
-warn_prefix ='WARNING:'
-sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
+docker_img   = 'rikenpip/pipv'
 
-sudo_cmd       = []
-prompt_prefix  = False
-prompt_rm_work = False
-flag_subdir    = False
-spack_path     = None
-dryrun         = False
-flag_quiet     = False
-error          = False
-
-def mesg( words, nl, fs ):
-    if words != []:
-        for word in words[0:-1]:
-            print( word, end=' ', file=fs )
-        if nl:
-            print( words[-1], file=fs )
-        else:
-            print( words[-1], end='', file=fs )
-    elif nl:
-        print( '', file=fs )
-    fs.flush()
-
-def message( words, nl=True, log=None, logonly=False ):
-    global flag_quiet, dryrun
-
-    if not logonly and not flag_quiet:
-        mesg( words, nl, sys.stdout )
-    if log != None and not dryrun:
-        mesg( words, nl, log )
-
-def err_msg( words, log=None ):
-    global error
-
-    error = True
-    message( [ err_prefix] + words, log=log )
-
-def warn_msg( words, log=None ):
-    message( [ warn_prefix] + words, log=log )
-
-urlparser = None
-def append_url( url0, url1 ):
-    global urlparser
-
-    if urlparser == None:
-        try:
-            import urllib.parse
-            urlparser = urllib.parse
-        except Exception as e0:
-            try:
-                import urlparse
-                urlparser = urlparse
-            except Exception as e1:
-                err_msg( [ 'No urllib module:',   e0 ] )
-                err_msg( [ 'No urlparse module:', e1 ] )
-                sys.exit( 1 )
-    return urlparser.urljoin( url0+'/', url1 )
+spack_url    = 'https://github.com/spack/spack.git'
 
 git_url_tab  = { 'github'   : 'https://github.com/RIKEN-SysSoft',
                  'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software' }
@@ -123,8 +62,6 @@ gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ),
                    8 : ( 'centos/glibc-2.28-72.el8_1.1.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ) }
-
-spack_url = 'https://github.com/spack/spack.git'
 
 # Ready list: (how, arch, redhat, pip )
 ready = { ( 'yum',      'x86_64',  7, 1 ): True,
@@ -192,6 +129,71 @@ ready = { ( 'yum',      'x86_64',  7, 1 ): True,
           ( 'git-rccs', 'aarch64', 8, 2 ): True,
           ( 'git-rccs', 'aarch64', 8, 3 ): True
 }
+
+msg_enter   = '>>>'
+msg_exit    = '<<<'
+msg_error   = '<<E'
+msg_prefix  ='---'
+msg_prefix1 ='###'
+err_prefix  ='ERROR:'
+warn_prefix ='WARNING:'
+sep = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
+
+sudo_cmd       = []
+prompt_prefix  = False
+prompt_rm_all  = False
+flag_subdir    = False
+spack_path     = None
+dryrun         = False
+flag_quiet     = False
+error          = False
+
+def mesg( words, nl, fs ):
+    if words != []:
+        for word in words[0:-1]:
+            print( word, end=' ', file=fs )
+        if nl:
+            print( words[-1], file=fs )
+        else:
+            print( words[-1], end='', file=fs )
+    elif nl:
+        print( '', file=fs )
+    fs.flush()
+
+def message( words, nl=True, log=None, logonly=False ):
+    global flag_quiet, dryrun
+
+    if not logonly and not flag_quiet:
+        mesg( words, nl, sys.stdout )
+    if log != None and not dryrun:
+        mesg( words, nl, log )
+
+def err_msg( words, log=None ):
+    global error
+
+    error = True
+    message( [ err_prefix] + words, log=log )
+
+def warn_msg( words, log=None ):
+    message( [ warn_prefix] + words, log=log )
+
+urlparser = None
+def append_url( url0, url1 ):
+    global urlparser
+
+    if urlparser == None:
+        try:
+            import urllib.parse
+            urlparser = urllib.parse
+        except Exception as e0:
+            try:
+                import urlparse
+                urlparser = urlparse
+            except Exception as e1:
+                err_msg( [ 'No urllib module:',   e0 ] )
+                err_msg( [ 'No urlparse module:', e1 ] )
+                sys.exit( 1 )
+    return urlparser.urljoin( url0+'/', url1 )
 
 null_file = open( os.devnull, 'w' )
 git_clone = [ 'git', 'clone' ]
@@ -559,7 +561,7 @@ def work_path( work, how, ver ):
     return path
 
 def check_work( work ):
-    global prompt_rm_work, dryrun
+    global prompt_rm_all, dryrun
 
     if os.path.isfile( work ):
         err_msg( [ work, 'is not a directory but a file' ] )
@@ -568,7 +570,7 @@ def check_work( work ):
         return True
     if dryrun:
         return True
-    if prompt_rm_work or args.force:
+    if prompt_rm_all or args.force:
         if not delete_work_dir( work ):
              return False
         return True
@@ -587,7 +589,7 @@ def check_work( work ):
         elif choice[0] == 'y':
             break
         elif choice[0] == 'a':
-            prompt_rm_work = True # never ask again
+            prompt_rm_all = True # never ask again
             break;
         elif choice[0] == 'n':
             error = True
@@ -623,27 +625,33 @@ def check_file( file ):
 def do_poll( proc, t, dot, inc, tmax, log_fs ):
     global args
 
-    delta = 0.2
-    if t > 100:
-        delat = 1.0
-    elif t > 1000:
-        delat = 10.0
+    if t < 100:
+        delta = 0.2
+    elif t < 1000:
+        delta = 1.0
+    else:
+        delta = 10.0
 
     td = 0.0
     while True:
         ret = proc.poll()
         if ret is not None or t >= tmax:
-            tu = t
-            unit = 's'
-            if t >= 60:
+            if t < 60:
+                tu = t
+                unit = 's'
+            elif t < 3600:
                 tu = t / 60
                 unit = 'm'
-            elif t >= 3600:
+            else:
                 tu = t / 3600
                 unit = 'h'
-            if ret is not None:
-                message( [ ' '+str(int(tu))+unit ] )
-            return ret, t
+
+            if ret is None:
+                message( [ str(int(tu))+unit ], nl=False )
+                return None, t
+            message( [ ' '+str(int(tu))+unit ], nl=False )
+            break
+
         if td >= inc:
             t += inc
             td = 0.0
@@ -658,7 +666,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
     message( [ ' - OK' ], log=log_fs )
     return True, t
 
-def execute( wd, cmd, log_f, log_fs ):
+def execute( wd, cmd, log_fs ):
     global dryrun, error
 
     if dryrun:
@@ -671,14 +679,12 @@ def execute( wd, cmd, log_f, log_fs ):
 
     try:
         message( [ msg_prefix ] + cmd, nl=False, log=log_fs )
-        redirect = [ '>>', log_f, '2>&1', '<', '/dev/null' ]
         if wd == None:
-            cmd_list = cmd + redirect
+            cmd_list = cmd
         else:
-            chdir = [ 'cd', wd ]
-        cmd_list = [ '(' ] + chdir + [ '&&' ] + cmd + [ ')' ] + redirect
+            cmd_list = [ 'cd', wd, '&&' ] + cmd
         shell_cmd = [ '/bin/sh', '-c', ' '.join( cmd_list ) ]
-        proc = sp.Popen( shell_cmd, close_fds=True, stderr=sys.stdout )
+        proc = sp.Popen( shell_cmd, close_fds=True, stdout=log_fs, stderr=log_fs )
 
         message( ' ', nl=False )
         inctab = [ ( '.',       1,       10 ),
@@ -692,46 +698,43 @@ def execute( wd, cmd, log_f, log_fs ):
             ( ret, t ) = do_poll( proc, t, dot, inc, tmax, log_fs )
             if ret != None:
                 time.sleep( 1 )     # wait for stdout/stderr flushing
-                return ret == 0
+                return ret
     except Exception as e:
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
-def install_yum( pip_ver, log_f, log_fs ):
+def install_yum( pip_ver, log_fs ):
     yum_pip = 'process-in-process-v' + str( pip_ver )
 
     retuple = ( 'yum', yum_pip, '' )
     message( [ msg_enter, 'Yum install', yum_pip ], log=log_fs )
 
-    if execute( None, sudo_cmd + [ 'yum', 'reinstall', '-y', yum_pip ],
-                log_f, log_fs ):
+    if execute( None, sudo_cmd + [ 'yum', 'reinstall', '-y', yum_pip ], log_fs ):
         return True, retuple
     return False, retuple
 
-def install_docker( pip_ver, log_f, log_fs ):
-    docker_pip = 'rikenpip/pipv' + str( pip_ver )
-
+def install_docker( pip_ver, log_fs ):
+    docker_pip = docker_img + str( pip_ver )
     retuple = ( 'docker', docker_pip, '' )
     message( [ msg_enter, 'Docker install', docker_pip ], log=log_fs )
 
     if execute( None,
-                sudo_cmd + [ 'docker', 'inspect', docker_pip ],
-                log_f, log_fs ):
+                sudo_cmd + [ 'docker', 'inspect', docker_pip ], log_fs ):
         message( [ msg_prefix1, 'Removing existing image', docker_pip ], log=log_fs )
         if not execute( None,
                         sudo_cmd + [ 'docker', 'rmi', docker_pip ],
-                        log_f, log_fs ):
+                        log_fs ):
             err_msg( [ 'Failed to remove existing image', docker_pip ],
                        log=log_fs )
             return False, retuple
     message( [ msg_prefix1, 'Pulling existing image', docker_pip ], log=log_fs )
     if execute( None,
                 sudo_cmd + [ 'docker', 'pull', docker_pip ],
-                log_f, log_fs ):
+                log_fs ):
         return True, retuple
     return False, retuple
 
-def install_spack( prefix, how, pip_ver, log_f, log_fs ):
+def install_spack( prefix, how, pip_ver, log_fs ):
     global args, spack_path, git_clone
 
     spack_pip = 'process-in-process@' + str( pip_ver )
@@ -744,31 +747,31 @@ def install_spack( prefix, how, pip_ver, log_f, log_fs ):
         if prefix_dir == None:
             return False, retuple
         message( [ msg_prefix1, 'Cloning Spack at', prefix_dir ], log=log_fs )
-        if not execute( prefix_dir, git_clone + [ spack_url ], log_f, log_fs ):
+        if not execute( prefix_dir, git_clone + [ spack_url ], log_fs ):
             spack_path = ''     # mark as not found
             return False, retuple
         spack_path = os.path.join( prefix_dir, 'spack', 'bin', 'spack' )
 
     retuple = ( 'spack', spack_pip, spack_path )
-    if execute( None, [ spack_path, 'find', spack_pip ], log_f, log_fs ):
+    if execute( None, [ spack_path, 'find', spack_pip ], log_fs ):
         message( [ msg_prefix1, 'Uninstalling', spack_pip ], log=log_fs )
-        if not execute( None, [ spack_path, 'uninstall', spack_pip ], log_f, log_fs ):
+        if not execute( None, [ spack_path, 'uninstall', '-y', spack_pip ], log_fs ):
             return False, retuple
     message( [ msg_prefix1, 'Installing', spack_pip ], log=log_fs )
     if not execute( None, [ spack_path, 'install', '--test=all',  spack_pip ],
-                    log_f, log_fs ):
+                    log_fs ):
         return False, retuple
     return True, retuple
 
-def wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs ):
-    if not execute( work_dir, [ 'wget', url ], log_f, log_fs ):
+def wget_install( work_dir, prefix_dir, pkgname, url, log_fs ):
+    if not execute( work_dir, [ 'wget', url ], log_fs ):
         err_msg( [ 'wget_install: wget', url, '-- FAILED' ], log=log_fs )
         raise Exception()
     [ mod_tar ] = re.findall( '.*/(.*)', url )
     if not check_file( os.path.join( work_dir, mod_tar ) ):
         err_msg( [ 'wget_install:', mod_tar, '-- unable to find' ], log=log_fs )
         raise Exception()
-    if not execute( work_dir, [ 'tar', 'xzf', mod_tar ], log_f, log_fs ):
+    if not execute( work_dir, [ 'tar', 'xzf', mod_tar ], log_fs ):
         err_msg( [ 'wget_install: tar xzf', mod_tar, '-- FAILED' ], log=log_fs )
         raise Exception()
     os.remove( os.path.join( work_dir, mod_tar ) )
@@ -776,23 +779,23 @@ def wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs ):
     mod_work = os.path.join( work_dir, mod_name )
     if not execute( mod_work,
                     [ './configure', '--prefix=' + prefix_dir ],
-                    log_f, log_fs ):
+                    log_fs ):
         err_msg( [ 'wget_install: '
                    './configure', '--prefix='+prefix_dir,
                    '['+mod_name+'] -- FAILED' ],
                    log=log_fs )
         raise Exception()
-    if not execute( mod_work, [ 'make' ], log_f, log_fs ):
+    if not execute( mod_work, [ 'make' ], log_fs ):
         err_msg( [ 'wget_install: make ['+mod_name+'] -- FAILED' ],
                    log=log_fs )
         raise Exception()
-    if not execute( mod_work, [ 'make', 'install' ], log_f, log_fs ):
+    if not execute( mod_work, [ 'make', 'install' ], log_fs ):
         err_msg( [ 'wget_install: make install ['+mod_name+'] -- FAILED' ],
                    log=log_fs)
         raise Exception()
     return '--package=' + pkgname + ':' + prefix_dir
 
-def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
+def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     global args, redhat_ver, git_clone
 
     branch_pip = 'pip-' + str( pip_ver )
@@ -841,7 +844,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         message( [ msg_prefix1, 'Cloning', repo_glibc, branch_glibc ], log=log_fs )
         if not execute( work_dir,
 			git_clone + [ '-b', branch_glibc, repo_glibc ],
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
         message( [ msg_prefix1, 'Building', repo_glibc ], log=log_fs )
         if make_directory( glibc_build, True ) == None:
@@ -850,7 +853,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
             return False, retuple
         if not execute( glibc_build,
                         [ build_script, glibc_install ],
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
         piplnlibs = os.path.join( glibc_install, 'bin', 'piplnlibs.sh' )
         if not check_file( piplnlibs ):
@@ -860,7 +863,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     message( [ msg_prefix1, 'Cloning', repo_pip, branch_pip ], log=log_fs )
     if not execute( work_dir,
                     git_clone + [ '-b', branch_pip, repo_pip ],
-                    log_f, log_fs ):
+                    log_fs ):
         return False, retuple
 
     message( [ msg_prefix1, 'Building', repo_pip ], log=log_fs )
@@ -869,32 +872,32 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
     if args.noglibc:
         if not execute( pip_dir,
                         [ configure, '--prefix=' + prefix_dir ],
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
     else:
         if not execute( pip_dir,
                         [ configure,
                           '--prefix=' + prefix_dir,
                           '--with-glibc-libdir=' + glibc_install + '/lib' ],
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
-    if not execute( pip_dir, [ 'make' ], log_f, log_fs ):
+    if not execute( pip_dir, [ 'make' ], log_fs ):
         return False, retuple
-    if not execute( pip_dir, [ 'make install' ], log_f, log_fs ):
+    if not execute( pip_dir, [ 'make install' ], log_fs ):
         return False, retuple
-    if not execute( pip_dir, [ 'make', 'doc-install' ], log_f, log_fs ):
+    if not execute( pip_dir, [ 'make', 'doc-install' ], log_fs ):
         return False, retuple
 
     message( [ msg_prefix1, 'Testing', repo_pip ], log=log_fs )
-    if not execute( work_dir, git_clone + [ repo_test ], log_f, log_fs ):
+    if not execute( work_dir, git_clone + [ repo_test ], log_fs ):
         return False, retuple
     test_dir = os.path.join( work_dir, pip + '-Testsuite' )
     configure = os.path.join( test_dir, 'configure' )
     if not execute( test_dir,
                     [ configure, '--with-pip=' + prefix_dir ],
-                    log_f, log_fs ):
+                    log_fs ):
         return False, retuple
-    if not execute( test_dir, [ 'make', 'test' ], log_f, log_fs ):
+    if not execute( test_dir, [ 'make', 'test' ], log_fs ):
         return False, retuple
 
     if args.noglibc or args.nogdb:
@@ -903,7 +906,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
         message( [ msg_prefix1, 'Cloning', repo_gdb, branch_gdb ], log=log_fs )
         if not execute( work_dir,
                         git_clone + [ '-b', branch_gdb, repo_gdb ],
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
 
         inst_pkgs = []
@@ -922,7 +925,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
                     if missing == []:
                         break
                     [ pkgname, url ] = missing
-                    installed = wget_install( work_dir, prefix_dir, pkgname, url, log_f, log_fs )
+                    installed = wget_install( work_dir, prefix_dir, pkgname, url, log_fs )
                     if not installed in inst_pkgs:
                         inst_pkgs += [ installed ]
             except Exception as e:
@@ -936,7 +939,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_f, log_fs  ):
                         [ build_script,
                           '--prefix='   + prefix_dir,
                           '--with-pip=' + prefix_dir ] + inst_pkgs,
-                        log_f, log_fs ):
+                        log_fs ):
             return False, retuple
         pip_gdb = os.path.join( prefix_dir, 'bin', 'pip-gdb' )
         if not check_file( pip_gdb ):
@@ -1044,15 +1047,15 @@ for h in how_list:
                 message( [ now_str, sep ], log=log_fs, logonly=True )
 
             if h == 'yum':
-                retuple = install_yum(    pip_ver, log_path, log_fs )
+                retuple = install_yum(    pip_ver, log_fs )
             elif h == 'docker':
-                retuple = install_docker( pip_ver, log_path, log_fs )
+                retuple = install_docker( pip_ver, log_fs )
             elif h == 'spack':
-                retuple = install_spack( prefix_dir, h, pip_ver, log_path, log_fs )
+                retuple = install_spack( prefix_dir, h, pip_ver, log_fs )
             elif h == 'github':
-                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
+                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_fs )
             elif h == 'git-rccs':
-                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_path, log_fs )
+                retuple = install_git( prefix_dir,   h, pip_ver, wdir, log_fs )
 
             ( ok, ( how, obj, note ) ) = retuple
             if ok:
@@ -1096,9 +1099,9 @@ message( [ '\nSummary' ] )
 if list_success != []:
     for ( how, obj, note ) in list_success:
         if not dryrun:
-            message( [ 'OK      ' ], nl=False )
+            message( [ 'OK\t' ], nl=False )
         else:
-            message( [ '[DRY] ' ], nl=False )
+            message( [ '[DRY]\t' ], nl=False )
         if note == '':
             message( [ how, obj ] )
         else:
@@ -1111,11 +1114,11 @@ if list_success != []:
 
 if list_skipped != []:
     for ( how, arch, redhat, pip_ver ) in list_skipped:
-        message( [ 'SKIPPED', how, arch, 'redhat'+str(redhat), 'PiP-v'+str(pip_ver) ] )
+        message( [ 'SKIPPED\t', how, arch, 'redhat'+str(redhat), 'PiP-v'+str(pip_ver) ] )
 
 if list_failure != []:
     for ( how, obj, log_path ) in list_failure:
-        message( 'NG      ', nl=False )
+        message( [ 'NG\t' ], nl=False )
         if log_path == '':
             message( [ how, obj ] )
         else:
