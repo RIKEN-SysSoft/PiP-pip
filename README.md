@@ -64,10 +64,10 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   Allow `sudo` when installing `yum` and `docker`. To enable this
   option, user must be a sudoer.
 
-- `--force`
-  This option stops asking if the installing (prefix) directory
-  and/or the work directory will be deleted or not when the already
-  exist(s).
+- `--yes`
+  This option stops asking if the installing (prefix) directory will
+  be re-used when it already exists, and/or if the work directory will
+  be deleted when it already exists.
 
 - `--noglibc`
   Do not install PiP-(patched-)glibc and PiP-(patched-)gdb. This
@@ -78,11 +78,17 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   Do not install PiP-(patched-)gdb. This option is only effective with
   the `--how=github` option. (refer to the next section for more details)
 
+- `--noupdate`
+  Do not update PiP lib. if it is already installed (`docker` and `spack`)
+
+- `--notest`
+  Do not run PiP testsuite after installed
+
 - `--keep`
-  Do not remove the work directory when the installation succeeds.  If
-  the build directory is the same with the prefix directory, or the
+  Do not remove the work directory(ies) when the installation succeeds.
+  If the build directory is the same with the prefix directory, or the
   build directory is somewhere above the prefix directory, then the
-  deletion is disabled automatically.
+  deletion is disabled.
 
 - `--dryrun`
   Dryrun. No actual actions will take place.
