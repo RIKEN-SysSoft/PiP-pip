@@ -13,28 +13,28 @@ execute () {
 }
 
 OK () {
-    echo "OK TESTING -- $@"
+    echo -n "OK TESTING -- $@"
     echo "OK TESTING -- $@" >> test.log
     execute $@
     if [ $retval == 0 ]; then
-	echo "   SUCCESS -- $@"
+	echo -e "\tSUCCESS"
 	echo "SUCCESS -- $@" >> test.log
     else
-	echo "****FAILED -- $@"
+	echo -e "\t**** FAILED"
 	echo "FAILED -- $@" >> test.log
 	fail=true
     fi
 }
 
 NG () {
-    echo "NG TESTING -- $@"
+    echo -n "NG TESTING -- $@"
     echo "NG TESTING -- $@" >> test.log
     execute $@
     if [ $retval != 0 ]; then
-	echo "   SUCCESS -- $@"
+	echo -e "\tSUCCESS -- $@"
 	echo "SUCCESS -- $@" >> test.log
     else
-	echo "****FAILED -- $@"
+	echo -e "\t****FAILED -- $@"
 	echo "FAILED -- $@" >> test.log
 	fail=true
     fi
@@ -58,6 +58,10 @@ OK ./pip-pip --dryrun --how=git-rccs,yum
 OK ./pip-pip --dryrun --how=all
 OK ./pip-pip --dryrun --how=ALL
 
+OK ./pip-pip --dryrun --how=yum --sudo --noupdate
+OK ./pip-pip --dryrun --how=docker --sudo --noupdate
+OK ./pip-pip --dryrun --how=spack --noupdate
+
 OK ./pip-pip --dryrun --how=yum      --version=all --sudo
 OK ./pip-pip --dryrun --how=docker   --version=ALL --sudo
 OK ./pip-pip --dryrun --how=spack    --version=-1  --sudo
@@ -74,7 +78,11 @@ OK ./pip-pip --dryrun --how=yum    --work=WORK --sudo
 OK ./pip-pip --dryrun --how=docker --work=WORK --sudo
 OK ./pip-pip --dryrun --how=spack  --work=WORK
 OK ./pip-pip --dryrun --how=github --work=WORK
-OK ./pip-pip --dryrun --how=github --work=WORK
+
+OK ./pip-pip --dryrun --how=yum    --sudo --notest
+OK ./pip-pip --dryrun --how=docker --sudo --notest
+OK ./pip-pip --dryrun --how=spack  --notest
+OK ./pip-pip --dryrun --how=github --notest
 
 OK ./pip-pip --dryrun --how=github --prefix=INSTALL --work=WORK
 OK ./pip-pip --dryrun --how=github --prefix=INSTALL --work=WORK --noglibc
@@ -85,16 +93,18 @@ OK ./pip-pip --dryrun --how=ALL --version=ALL
 
 OK ./pip-pip --dryrun --how=all --version=all --quiet
 OK ./pip-pip --dryrun --how=ALL --version=ALL --keep
-OK ./pip-pip --dryrun --how=all --version=all --force
+OK ./pip-pip --dryrun --how=all --version=all --yes
 
-OK ./pip-pip --dryrun --how=all --version=all --test=0
-OK ./pip-pip --dryrun --how=ALL --version=ALL --test=100
+OK ./pip-pip --dryrun --how=all --version=all --threshold=0
+OK ./pip-pip --dryrun --how=all --version=all --threshold=-10
+OK ./pip-pip --dryrun --how=ALL --version=ALL --threshold=100
 
 NG ./pip-pip  --dryrun --nosuchoption
 NG ./pip-pip --dryrun --how=unknown
 NG ./pip-pip --dryrun --version=9
 
 if $fail; then
+    echo "FAILED !!!"
     exit 1
 fi
 
