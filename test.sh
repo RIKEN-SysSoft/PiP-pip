@@ -101,7 +101,7 @@ OK ./pip-pip --dryrun --how=ALL --version=ALL --threshold=100
 
 NG ./pip-pip  --dryrun --nosuchoption
 NG ./pip-pip --dryrun --how=unknown
-NG ./pip-pip --dryrun --version=9
+NG ./pip-pip --dryrun --version=999
 
 if $fail; then
     echo "FAILED !!!"

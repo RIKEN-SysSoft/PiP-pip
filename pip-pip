@@ -44,11 +44,6 @@ import sys
 import subprocess as sp
 import re
 
-docker_img   = 'rikenpip/pip-v'
-
-spack_url     = 'https://github.com/spack/spack.git'
-spack_url_dev = 'git@git.sys.r-ccs.riken.jp:software/PIP-Spack.git'
-
 git_url_tab   = { 'github'   : 'https://github.com/RIKEN-SysSoft',
                   'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software' }
 
@@ -65,6 +60,29 @@ gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ),
                    8 : ( 'centos/glibc-2.28-72.el8_1.1.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ) }
+
+def resource_id( how, pip_ver ):
+    if how == 'yum':
+        return 'process-in-process-v' + str( pip_ver )
+    elif how == 'docker':
+        return 'rikenpip/pip-v' + str( pip_ver )
+    elif how == 'spack':
+        return 'process-in-process@' + str( pip_ver )
+    else:
+        return None
+
+def spack_url():
+    global ARGS
+
+    spack_url     = 'https://github.com/spack/spack.git'
+    spack_url_dev = 'git@git.sys.r-ccs.riken.jp:software/PIP-Spack.git'
+
+    if not ARGS.develop:
+        url = spack_url
+    else:
+        url = spack_url_dev
+    bsnam = os.path.splitext( os.path.basename( url ) )[0]
+    return url, bsnam
 
 # Ready list: (how, arch, redhat, pip )
 ready = { ( 'yum',      'x86_64',  7, 1 ): ( True,  True  ),
@@ -142,15 +160,18 @@ ERR_PREFIX  ='ERROR:'
 WARN_PREFIX ='WARNING:'
 SEP = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 
-sudo_cmd       = []
-prompt_prefix  = False
-prompt_rm_all  = False
-FLAG_SUBDIR    = False
-spack_path     = None
-DRYRUN         = False
-FLAG_QUIET     = False
-SUDO_ERR       = False
-ERROR          = False
+sudo_cmd      = []
+query_prefix  = False
+query_work    = False
+spack_path    = None
+DRYRUN        = False
+FLAG_SUBDIR   = False
+FLAG_NOUPDATE = False
+FLAG_KEEP     = False
+FLAG_QUIET    = False
+FLAG_YES      = False
+SUDO_ERR      = False
+ERROR         = False
 
 def mesg( words, newline, fs ):
     "general print message func"
@@ -338,8 +359,11 @@ parser.add_argument( '--dryrun', '--dry', '-d',
                      action  = 'store_true' )
 ARGS = parser.parse_args()
 
-DRYRUN     = ARGS.dryrun
-FLAG_QUIET = ARGS.quiet
+DRYRUN        = ARGS.dryrun
+FLAG_QUIET    = ARGS.quiet
+FLAG_NOUPDATE = ARGS.noupdate
+FLAG_KEEP     = ARGS.keep
+FLAG_YES      = ARGS.yes
 
 test_threshold = ARGS.threshold
 if test_threshold < 0:
@@ -400,8 +424,6 @@ else:
     if howlist == []:
         ERROR = True
     how_list = howlist
-if len( how_list ) > 1:
-    FLAG_SUBDIR = True
 
 if 'yum' in how_list:
     if not check_command( 'yum' ):
@@ -417,6 +439,7 @@ if 'spack' in how_list:
     if check_command( 'spack' ):
         spack_path = 'spack'
     elif not check_command( 'git' ):
+        spack_path = None
         err_msg( [ "'git' command not found (required to install Spack)" ] )
 if 'github' in how_list or 'git-rccs' in how_list:
     if not check_command( 'git' ):
@@ -460,7 +483,8 @@ else:
         else:
             err_msg( [ ','.join(errlist),
                        'are not acceptable values of --version' ] )
-if len( pip_vers ) > 1:
+
+if len( how_list ) > 1 or len( pip_vers ) > 1:
     FLAG_SUBDIR = True
 
 # check arch
@@ -486,6 +510,25 @@ def make_directory( path, flag ):
     else:
         return dir
 
+def query( prompt ):
+    if not FLAG_YES:
+        return True
+    try:
+        while True:
+            choice = input( prompt +
+                            " 'yes', 'all' or 'no' [Y/A/N]: " ).lower()
+            if choice[0] == 'y':
+                return 'y'
+            if choice[0] == 'a':
+                return 'a'
+            if choice[0] == 'n':
+                return 'n'
+            continue
+    except:
+        message( [] )
+        NULL_FILE.close()
+        sys.exit( 1 )
+
 # check and create prefix dir
 def check_prefix( prefix_arg ):
     "check the prefix directory"
@@ -498,29 +541,15 @@ def check_prefix( prefix_arg ):
         err_msg( [ pref, 'is not a directory but a file' ] )
         return None
     if os.path.isdir( pref ):
-        if not ARGS.yes and not prompt_prefix:
+        if not FLAG_YES and not query_prefix:
             warn_msg( [ 'Prefix directory already exists: ', pref ] )
-            while True:
-                try:
-                    prompt  = "Are you sure to install into '"
-                    prompt += pref+"' directory? 'yes' or 'no' [y/a/n]: "
-                    choice = input( prompt ).lower()
-                except:
-                    message( [] )
-                    NULL_FILE.close()
-                    sys.exit( 1 )
-
-                if choice == '':
-                    continue
-                if choice[0] == 'y':
-                    break
-                if choice[0] == 'a':
-                    prompt_prefix = True # never ask again
-                    break
-                if choice[0] == 'n':
-                    ERROR = True
-                    break
-                continue
+            ans = query( "Are you sure to install into '" +
+                         pref +
+                         "' directory?" )
+            if ans == 'a':
+                query_prefix = True # never ask again
+            elif ans == 'n':
+                ERROR = True
     return pref
 
 def prefix_path( prefix, how, ver ):
@@ -596,7 +625,7 @@ def work_path( work, how, ver ):
 
 def check_work( work ):
     "check working directory"
-    global prompt_rm_all, ERROR
+    global query_work, ERROR
 
     if os.path.isfile( work ):
         err_msg( [ work, 'is not a directory but a file' ] )
@@ -605,34 +634,17 @@ def check_work( work ):
         return True
     if DRYRUN:
         return True
-    if prompt_rm_all or ARGS.yes:
+
+    if not FLAG_YES or query_work:
+        warn_msg( [ 'Work directory already exists:', work ] )
+        ans = query( "Delete work directory before install?" )
+        if ans == 'n':
+            ERROR = True
+            return False
+        if ans == 'a':
+            query_work = True # never ask again
         if not delete_work_dir( work ):
             return False
-        return True
-
-    warn_msg( [ 'Work directory already exists:', work ] )
-    while True:
-        try:
-            prompt = "Delete work directory before install? " \
-                "'yes', 'all' or 'No' [y/a/n]: "
-            choice = input( prompt ).lower()
-        except:
-            ERROR = True
-            return False
-
-        if choice == '':
-            continue
-        if choice[0] == 'y':
-            break
-        elif choice[0] == 'a':
-            prompt_rm_all = True # never ask again
-            break;
-        if choice[0] == 'n':
-            ERROR = True
-            return False
-        continue
-    if not delete_work_dir( work ):
-        return False
     return True
 
 def create_work( work ):
@@ -722,8 +734,12 @@ def execute( wd, cmd, log_fs ):
         else:
             cmd_list = cmd
         shell_cmd = [ '/bin/sh', '-c', ' '.join( cmd_list ) ]
-        proc = sp.Popen( shell_cmd, close_fds=True,
-                         stdout=log_fs, stderr=log_fs )
+        if log_fs is not None:
+            proc = sp.Popen( shell_cmd, close_fds=True,
+                             stdout=log_fs, stderr=log_fs )
+        else:
+            proc = sp.Popen( shell_cmd, close_fds=True,
+                             stdout=NULL_FILE, stderr=NULL_FILE )
 
         message( ' ', newline=False )
         inctab = [ ( '.',       1,       10 ),
@@ -742,9 +758,39 @@ def execute( wd, cmd, log_fs ):
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
+def is_already_installed( prefix, pip_ver ):
+    global spack_path
+
+    if DRYRUN:
+        return False
+
+    if how == 'yum':
+        yum_pip = resource_id( how, pip_ver )
+        if execute( None,
+                    [ 'yum', 'list', 'installed', yum_pip ],
+                    None ):
+            return True
+    elif how == 'docker':
+        docker_pip = resource_id( how, pip_ver )
+        if execute( None,
+                    sudo_cmd + [ 'docker', 'inspect', docker_pip ], None ):
+            return True;
+    elif how == 'spack':
+        spack_pip = resource_id( how, pip_ver )
+        if spack_path is None:
+            ( url, bsnam ) = spack_url()
+            spack_path = os.path.join( prefix, bsnam, 'bin', 'spack' )
+        if execute( None, [ spack_path, 'find', spack_pip ], None ):
+            return True;
+    else: # GIT
+        libpipso = os.path.join( prefix, 'lib', 'libpip.so' )
+        if os.path.isfile( libpipso ):
+            return True
+    return False
+
 def install_yum( pip_ver, work_dir, log_fs ):
     "yum install"
-    yum_pip = 'process-in-process-v' + str( pip_ver )
+    yum_pip = resource_id( 'yum', pip_ver )
     message( [ MSG_ENTER, 'Yum install', yum_pip ], log=log_fs )
     retuple = ( 'yum', yum_pip, '' )
     if not execute( None,
@@ -771,12 +817,12 @@ def install_yum( pip_ver, work_dir, log_fs ):
 
 def install_docker( pip_ver, log_fs ):
     "docker install"
-    docker_pip = docker_img + str( pip_ver )
+    docker_pip = resource_id( 'docker', pip_ver )
     message( [ MSG_ENTER, 'Docker install', docker_pip ], log=log_fs )
     retuple = ( 'docker', docker_pip, '' )
     if execute( None,
                 sudo_cmd + [ 'docker', 'inspect', docker_pip ], log_fs ):
-        if ARGS.noupdate:
+        if FLAG_NOUPDATE:
             return True, retuple
 
         message( [ MSG_PREFIX1,
@@ -796,7 +842,7 @@ def install_docker( pip_ver, log_fs ):
 def install_spack( prefix, how, pip_ver, log_fs ):
     "Spack install"
     global spack_path
-    spack_pip = 'process-in-process@' + str( pip_ver )
+    spack_pip = resource_id( 'spack', pip_ver )
     retuple = ( 'spack', spack_pip, '' )
     if spack_path == '':        # Spack unable
         return False, retuple
@@ -806,11 +852,7 @@ def install_spack( prefix, how, pip_ver, log_fs ):
         prefix_dir = create_prefix( prefix, how, pip_ver )
         if prefix_dir is None:
             return False, retuple
-        if not ARGS.develop:
-            url = spack_url
-        else:
-            url = spack_url_dev
-        bsnam = os.path.splitext( os.path.basename( url ) )[0]
+        ( url, bsnam ) = spack_url()
         spack_dir = os.path.join( prefix_dir, bsnam )
         if os.path.isdir( os.path.join( spack_dir, '.git' ) ):
             message( [ MSG_PREFIX1, 'Pulling Spack at', prefix_dir ], log=log_fs )
@@ -825,7 +867,7 @@ def install_spack( prefix, how, pip_ver, log_fs ):
 
     retuple = ( 'spack', spack_pip, spack_path )
     if execute( None, [ spack_path, 'find', spack_pip ], log_fs ):
-        if ARGS.noupdate:
+        if FLAG_NOUPDATE:
             return True, retuple
         message( [ MSG_PREFIX1, 'Uninstalling', spack_pip ], log=log_fs )
         if not execute( None, [ spack_path, 'uninstall', '-y', spack_pip ], log_fs ):
@@ -1030,7 +1072,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
         if not check_file( pip_gdb ):
             err_msg( [ 'Unable to find: ', pip_gdb ], log=log_fs )
             return False, retuple
-    if not ARGS.keep:
+    if not FLAG_KEEP:
         delete_work_dir( work_dir )
     return True, retuple
 
@@ -1038,6 +1080,7 @@ if ERROR:
     NULL_FILE.close()
     sys.exit( 1 )
 
+#check prefix dir
 prefix = ARGS.prefix
 if len(prefix) > 2 and prefix[-2:] == '//':
     FLAG_SUBDIR = True
@@ -1045,10 +1088,10 @@ if len(prefix) > 2 and prefix[-2:] == '//':
 prefix_dir = check_prefix( prefix )
 work_dir   = os.path.realpath( os.path.expanduser( ARGS.work ) )
 
-# check work and prefix dirs if work can be deleted
+# check work dir if work can be deleted
 common = os.path.commonprefix( [ work_dir, prefix_dir ] )
 if common is work_dir:          # this means work_dir is upper of prefix_dir
-    if not ARGS.keep:
+    if not FLAG_KEEP:
         if not DRYRUN:
             err_msg( [ 'Work dir includes prefix dir and ' +
                        'work dir cannot be deleted.' ] )
@@ -1062,10 +1105,10 @@ if ERROR:
 
 ### NOW we can actually do the installation(s)
 
-def is_ready( how, arch, redhat_version, pip_ver ):
+def is_ready( how, arch, redhat, pip_ver ):
     if DRYRUN:
         return True
-    (deploy, develop) = ready[how,str(arch),redhat_version,pip_ver]
+    (deploy, develop) = ready[how,str(arch),redhat,pip_ver]
     if not ARGS.develop:
         return deploy
     return develop
@@ -1079,54 +1122,84 @@ if ERROR:
     NULL_FILE.close()
     sys.exit( 1 )
 
-ready_list     = []
-not_ready_list = []
+list_ready     = []
+list_not_ready = []
+list_noupdate  = []
+list_install   = []
+
+if FLAG_NOUPDATE:
+    message( [] )
+    message( [ 'Checking if already installed (--noupdate)' ] )
+    for ver in pip_vers:
+        for how in how_list:
+            prefdir = prefix_path( prefix_dir, how, ver )
+            if not is_ready( how, arch, redhat_version, ver ) :
+                list_not_ready.append( ( how, ver ) )
+            elif is_already_installed( prefdir, ver ) and FLAG_NOUPDATE:
+                list_noupdate.append( ( how, ver ) )
+            else:
+                list_ready.append( ( how, ver ) )
+
+
 message( [] )
 message( [ 'Redhat/Centos:\t\t', redhat_version ] )
 message( [ 'CPU Architecture:\t', arch ])
+
 message( [] )
 message( [ 'List of installations' ] )
-for ver in pip_vers:
-    for how in how_list:
-        if not is_ready( how, arch, redhat_version, ver ) :
-            not_ready_list.append( ( how, ver ) )
-        else:
-            ready_list.append( ( how, ver ) )
-            message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
-            if how == 'spack' and spack_path != 'spack':
-                message( [ '  Prefix dir:\t',
-                           prefix_path( prefix_dir, how, ver ) ] )
-            elif how == 'github':
-                message( [ '  Prefix dir:\t',
-                           prefix_path( prefix_dir, how, ver ) ] )
-                message( [ '  Work dir:\t',
-                           work_path( work_dir, how, ver ) ] )
-            elif how == 'git-rccs':
-                message( [ '  Prefix dir:\t',
-                           prefix_path( prefix_dir, how, ver ) ] )
-                message( [ '  Work dir:\t',
-                           work_path( work_dir, how, ver ) ] )
-if not_ready_list != []:
+for ( how, ver ) in list_ready:
+    message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
+    prefdir = prefix_path( prefix_dir, how, ver )
+    if how == 'spack':
+        message( [ '  Prefix dir:\t', prefdir ] )
+    elif how == 'github':
+        message( [ '  Prefix dir:\t', prefdir ] )
+        message( [ '  Work dir:\t',
+                   work_path( work_dir, how, ver ) ] )
+    elif how == 'git-rccs':
+        message( [ '  Prefix dir:\t', prefdir ] )
+        message( [ '  Work dir:\t',
+                   work_path( work_dir, how, ver ) ] )
+
+if list_not_ready != []:
     message( [] )
-    if len( not_ready_list ) == 1:
+    if len( list_not_ready ) == 1:
         warn_msg( [ 'The following is not ready and',
                     'installtion will be skipped' ] )
     else:
         warn_msg( [ 'The followings are not ready and',
                     'installtion will be skipped' ] )
 
-    for ( how, ver ) in not_ready_list:
+    for ( how, ver ) in list_not_ready:
         message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
+
+if list_noupdate != []:
+    message( [] )
+    if len( list_noupdate ) == 1:
+        warn_msg( [ 'The following is already installed and',
+                    'installtion will be skipped (--noupdate)' ] )
+    else:
+        warn_msg( [ 'The followings are already installed and',
+                    'installtion will be skipped (--noupdate)' ] )
+
+    for ( how, ver ) in list_noupdate:
+        message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
+
+if list_ready == []:
+    message( [] )
+    err_msg( [ 'Nothing to install' ] )
+    NULL_FILE.close()
+    sys.exit( 1 )
 
 ## let's start installation(s)
 
 ERROR = False
 
-list_success = []
-list_failure = []
-list_skipped = []
+list_success  = []
+list_failure  = []
+list_skipped  = []
 
-for ( how, pip_ver ) in ready_list:
+for ( how, pip_ver ) in list_ready:
     ERROR = False
     message( [] )
     if not is_ready( how, arch, redhat_version, pip_ver ):
@@ -1183,7 +1256,7 @@ if list_success == [] and list_failure == []:
     NULL_FILE.close()
     sys.exit( 1 )
 
-if not ARGS.keep:
+if not FLAG_KEEP:
     message( [] )
     if list_failure == []:
         delete_work_dir( wdir )
@@ -1214,6 +1287,14 @@ if list_success != []:
 if list_skipped != []:
     for ( how, arch, redhat, pip_ver ) in list_skipped:
         message( [ 'SKIPPED\t',
+                   how,
+                   arch,
+                   'redhat'+str(redhat),
+                   'PiP-v'+str(pip_ver) ] )
+
+if list_noupdate != []:
+    for ( how, arch, redhat, pip_ver ) in list_skipped:
+        message( [ 'NOUPDATE\t',
                    how,
                    arch,
                    'redhat'+str(redhat),
