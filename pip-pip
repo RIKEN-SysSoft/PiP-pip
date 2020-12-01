@@ -221,12 +221,12 @@ def concat_urls( url0, url1 ):
             except Exception as e1:
                 err_msg( [ 'No urllib module:',   e0 ] )
                 err_msg( [ 'No urlparse module:', e1 ] )
-                NULL_FILE.close()
+                NULL_FS.close()
                 sys.exit( 1 )
     return urlparser.urljoin( url0+'/', url1 )
 
 GIT_CLONE = [ 'git', 'clone' ]
-NULL_FILE = open( os.devnull, 'w' )
+NULL_FS = open( os.devnull, 'w' )
 
 def get_redhat_version():
     "obtain RedHat version"
@@ -267,7 +267,7 @@ def is_privileged( log_fs ):
             return True
 
     sudo_rc = sp.call( [ '/bin/sh', '-c', 'sudo -S true' ],
-                       stdout=NULL_FILE, stderr=NULL_FILE )
+                       stdout=NULL_FS, stderr=NULL_FS )
     if sudo_rc == 0:
         able_to_sudo = True
     else:
@@ -524,7 +524,7 @@ def query( prompt ):
             continue
     except:
         message( [] )
-        NULL_FILE.close()
+        NULL_FS.close()
         sys.exit( 1 )
 
 # check and create prefix dir
@@ -596,7 +596,7 @@ def delete_work_dir( wdir ):
             else:
                 if sp.run( [ '/bin/sh', '-c', 'rm -f -r ' + wdir ],
                            check=False,
-                           stdout=NULL_FILE, stderr=NULL_FILE ).returncode != 0:
+                           stdout=NULL_FS, stderr=NULL_FS ).returncode != 0:
                     raise Exception( 'rm -r -f ' + wdir + ' FAILD' )
             # success
             message( [ ' done' ] )
@@ -667,7 +667,7 @@ def check_file( file ):
         return True
     return os.path.isfile( file )
 
-def do_poll( proc, t, dot, inc, tmax, log_fs ):
+def do_poll( proc, t, dot, inc, tmax, log_fs, silent ):
     "do poll and output dots"
 
     if t < 100:
@@ -692,54 +692,59 @@ def do_poll( proc, t, dot, inc, tmax, log_fs ):
                 unit = 'h'
 
             if ret is None:
-                message( [ str(int(tu))+unit ], newline=False )
+                if not silent:
+                    message( [ str(int(tu))+unit ], newline=False )
                 return None, t
-            message( [ ' '+str(int(tu))+unit ], newline=False )
+            if not silent:
+                message( [ ' '+str(int(tu))+unit ], newline=False )
             break
         if td >= inc:
             t += inc
             td = 0.0
-            message( [ dot ], newline=False )
+            if not silent:
+                message( [ dot ], newline=False )
 
         time.sleep( delta )
         td += delta
 
     if ret != 0:
-        message( [ ' - NG' ], log=log_fs )
+        if not silent:
+            message( [ ' - NG' ], log=log_fs )
         return False, t
-    message( [ ' - OK' ], log=log_fs )
+    if not silent:
+        message( [ ' - OK' ], log=log_fs )
     return True, t
 
-def execute( wd, cmd, log_fs ):
+def execute( wd, cmd, log_fs, silent=False ):
     "execute a Linux command"
     global ERROR
 
     if DRYRUN:
-        message( [ '[DRY]' ] + cmd, log=log_fs )
+        if not silent:
+            message( [ '[DRY]' ] + cmd, log=log_fs )
         return True
     if ERROR:
-        message( [ MSG_PREFIX ] +
-                 cmd +
-                 [ '-- execution skipped due to prev. error' ],
-                 log=log_fs )
+        if not silent:
+            message( [ MSG_PREFIX ] +
+                     cmd +
+                     [ '-- execution skipped due to prev. error' ],
+                     log=log_fs )
         return False
 
     try:
-        message( [ MSG_PREFIX ] + cmd, newline=False, log=log_fs )
-        message( [], newline=True, log=log_fs, logonly=True )
+        if not silent:
+            message( [ MSG_PREFIX ] + cmd, newline=False, log=log_fs )
+            message( [], newline=True, log=log_fs, logonly=True )
         if wd is not None:
             cmd_list = [ 'cd', wd, '&&' ] + cmd
         else:
             cmd_list = cmd
         shell_cmd = [ '/bin/sh', '-c', ' '.join( cmd_list ) ]
-        if log_fs is not None:
-            proc = sp.Popen( shell_cmd, close_fds=True,
-                             stdout=log_fs, stderr=log_fs )
-        else:
-            proc = sp.Popen( shell_cmd, close_fds=True,
-                             stdout=NULL_FILE, stderr=NULL_FILE )
+        proc = sp.Popen( shell_cmd, close_fds=True,
+                         stdout=log_fs, stderr=log_fs )
 
-        message( ' ', newline=False )
+        if not silent:
+            message( ' ', newline=False )
         inctab = [ ( '.',       1,       10 ),
                    ( '.',       6,       60 ),
                    ( '.',      60,      360 ),
@@ -748,7 +753,7 @@ def execute( wd, cmd, log_fs ):
                    ( '.', 24*3600, 9999*999 ) ]
         t = 0
         for ( dot, inc, tmax ) in inctab:
-            ( ret, t ) = do_poll( proc, t, dot, inc, tmax, log_fs )
+            ( ret, t ) = do_poll( proc, t, dot, inc, tmax, log_fs, silent )
             if ret is not None:
                 time.sleep( 1 )     # wait for stdout/stderr flushing
                 return ret
@@ -764,21 +769,20 @@ def is_already_installed( prefix, how, pip_ver ):
 
     if how == 'yum':
         yum_pip = resource_id( how, pip_ver )
-        if execute( None,
-                    [ 'yum', 'list', 'installed', yum_pip ],
-                    None ):
+        if execute( None, [ 'yum', 'list', 'installed', yum_pip ], NULL_FS, True ):
             return True
     elif how == 'docker':
         docker_pip = resource_id( how, pip_ver )
         if execute( None,
-                    sudo_cmd + [ 'docker', 'inspect', docker_pip ], None ):
+                    sudo_cmd + [ 'docker', 'inspect', docker_pip ],
+                    NULL_FS, True ):
             return True;
     elif how == 'spack':
         spack_pip = resource_id( how, pip_ver )
         if spack_path is None:
             ( url, bsnam ) = spack_url()
             spack_path = os.path.join( prefix, bsnam, 'bin', 'spack' )
-        if execute( None, [ spack_path, 'find', spack_pip ], None ):
+        if execute( None, [ spack_path, 'find', spack_pip ], NULL_FS, True ):
             return True;
     else: # GIT
         libpipso = os.path.join( prefix, 'lib', 'libpip.so' )
@@ -1031,7 +1035,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
             build_script = os.path.join( gdb_dir, 'build.sh' )
             try:
                 psproc = sp.Popen( [ build_script, '--missing' ],
-                                   stdout=sp.PIPE, stderr=NULL_FILE )
+                                   stdout=sp.PIPE, stderr=NULL_FS )
                 while True:
                     mod = psproc.stdout.readline()
                     if mod == '':
@@ -1070,7 +1074,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     return True, retuple
 
 if ERROR:
-    NULL_FILE.close()
+    NULL_FS.close()
     sys.exit( 1 )
 
 #check prefix dir
@@ -1093,7 +1097,7 @@ if common is work_dir:          # this means work_dir is upper of prefix_dir
                         'work dir cannot be deleted.' ] )
 
 if ERROR:
-    NULL_FILE.close()
+    NULL_FS.close()
     sys.exit( 1 )
 
 ### NOW we can actually do the installation(s)
@@ -1116,7 +1120,7 @@ for how in how_list:
         if is_ready( how, arch, redhat_version, ver ):
             check_work( work_path( work_dir, how, ver ) )
 if ERROR:
-    NULL_FILE.close()
+    NULL_FS.close()
     sys.exit( 1 )
 
 list_ready     = []
@@ -1180,7 +1184,7 @@ if list_noupdate != []:
 if list_ready == []:
     message( [] )
     err_msg( [ 'Nothing to install' ] )
-    NULL_FILE.close()
+    NULL_FS.close()
     sys.exit( 1 )
 
 ## let's start installation(s)
@@ -1200,7 +1204,7 @@ for ( how, pip_ver ) in list_ready:
 
     ( wdir, log_path ) = create_work( work_path( work_dir, how, pip_ver ) )
     if wdir is None:
-        NULL_FILE.close()
+        NULL_FS.close()
         sys.exit( 1 )
 
     try:
@@ -1240,12 +1244,12 @@ for ( how, pip_ver ) in list_ready:
         message( [ '**** logfile:', log_path ] )
     except KeyboardInterrupt:
         message( [ '\n^C' ] )
-        NULL_FILE.close()
+        NULL_FS.close()
         sys.exit( 1 )
 
 if list_success == [] and list_failure == []:
     # this should not happen
-    NULL_FILE.close()
+    NULL_FS.close()
     sys.exit( 1 )
 
 if not FLAG_KEEP:
@@ -1310,7 +1314,7 @@ if docker_success:
     message( [ 'DOCKER: To run the PiP Docker image:' ] )
     message( [ '\t$ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
 
-NULL_FILE.close()
+NULL_FS.close()
 if list_failure != []:
     sys.exit( 1 )
 
