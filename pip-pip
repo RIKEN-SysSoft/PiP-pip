@@ -532,7 +532,7 @@ def query( prompt ):
 # check and create prefix dir
 def check_prefix( prefix_arg ):
     "check the prefix directory"
-    global ERROR
+    global query_prefix, ERROR
 
     pref = os.path.realpath( os.path.expanduser( prefix_arg ) )
     if DRYRUN:
