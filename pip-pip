@@ -328,7 +328,7 @@ parser.add_argument( '--sudo', '-s',
                      help    = 'allow sudo (yum, docker)',
                      action  = 'store_true' )
 parser.add_argument( '--yes', '-y',
-                     help    = "answer 'yes' to the prompt(s)",
+                     help    = "answer 'yes' to the all prompt(s)",
                      action  = 'store_true' )
 parser.add_argument( '--quiet', '-q',
                      help    = 'quiet mode',
@@ -511,8 +511,6 @@ def make_directory( path, flag ):
         return dir
 
 def query( prompt ):
-    if not FLAG_YES:
-        return True
     try:
         while True:
             choice = input( prompt +
@@ -758,8 +756,10 @@ def execute( wd, cmd, log_fs ):
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
-def is_already_installed( prefix, pip_ver ):
+def is_already_installed( prefix, how, pip_ver ):
     global spack_path
+
+    print( 'is_already_installed(', how, pip_ver, ')' )
 
     if DRYRUN:
         return False
@@ -822,9 +822,6 @@ def install_docker( pip_ver, log_fs ):
     retuple = ( 'docker', docker_pip, '' )
     if execute( None,
                 sudo_cmd + [ 'docker', 'inspect', docker_pip ], log_fs ):
-        if FLAG_NOUPDATE:
-            return True, retuple
-
         message( [ MSG_PREFIX1,
                    'Removing existing image', docker_pip ],
                  log=log_fs )
@@ -867,8 +864,6 @@ def install_spack( prefix, how, pip_ver, log_fs ):
 
     retuple = ( 'spack', spack_pip, spack_path )
     if execute( None, [ spack_path, 'find', spack_pip ], log_fs ):
-        if FLAG_NOUPDATE:
-            return True, retuple
         message( [ MSG_PREFIX1, 'Uninstalling', spack_pip ], log=log_fs )
         if not execute( None, [ spack_path, 'uninstall', '-y', spack_pip ], log_fs ):
             return False, retuple
@@ -1105,6 +1100,10 @@ if ERROR:
 
 ### NOW we can actually do the installation(s)
 
+message( [] )
+message( [ 'Redhat/Centos:\t\t', redhat_version ] )
+message( [ 'CPU Architecture:\t', arch ])
+
 def is_ready( how, arch, redhat, pip_ver ):
     if DRYRUN:
         return True
@@ -1130,20 +1129,15 @@ list_install   = []
 if FLAG_NOUPDATE:
     message( [] )
     message( [ 'Checking if already installed (--noupdate)' ] )
-    for ver in pip_vers:
-        for how in how_list:
-            prefdir = prefix_path( prefix_dir, how, ver )
-            if not is_ready( how, arch, redhat_version, ver ) :
-                list_not_ready.append( ( how, ver ) )
-            elif is_already_installed( prefdir, ver ) and FLAG_NOUPDATE:
-                list_noupdate.append( ( how, ver ) )
-            else:
-                list_ready.append( ( how, ver ) )
-
-
-message( [] )
-message( [ 'Redhat/Centos:\t\t', redhat_version ] )
-message( [ 'CPU Architecture:\t', arch ])
+for ver in pip_vers:
+    for how in how_list:
+        prefdir = prefix_path( prefix_dir, how, ver )
+        if not is_ready( how, arch, redhat_version, ver ) :
+            list_not_ready.append( ( how, ver ) )
+        elif is_already_installed( prefdir, how, ver ) and FLAG_NOUPDATE:
+            list_noupdate.append( ( how, ver ) )
+        else:
+            list_ready.append( ( how, ver ) )
 
 message( [] )
 message( [ 'List of installations' ] )
