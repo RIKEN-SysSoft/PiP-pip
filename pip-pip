@@ -706,7 +706,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs, silent ):
         message( [ ' - OK' ], log=log_fs )
     return True, t
 
-def execute( wd, cmd, log_fs, silent=False, env='' ):
+def execute( wd, cmd, log_fs, silent=False, env=[] ):
     "execute a Linux command"
     global ERROR
 
@@ -730,7 +730,7 @@ def execute( wd, cmd, log_fs, silent=False, env='' ):
             cmd_list = [ 'cd', wd, '&&' ] + cmd
         else:
             cmd_list = cmd
-        shell_cmd = [ '/bin/sh', '-c', ' '.join( [ env ] + cmd_list ) ]
+        shell_cmd = [ '/bin/sh', '-c', ' '.join( env + cmd_list ) ]
         proc = sp.Popen( shell_cmd, close_fds=True,
                          stdout=log_fs, stderr=log_fs )
 
