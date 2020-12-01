@@ -492,23 +492,19 @@ arch = cpu_arch()
 if not arch in [ 'x86_64', 'aarch64' ]:
     err_msg( [ arch, 'is not supported by PiP' ] )
 
-def make_directory( path, flag ):
+def make_directory( path ):
     "make directory"
 
-    if not DRYRUN:
-        try:
-            if os.path.isdir( path ):
-                if flag:
-                    return path
-                err_msg( [ 'Dirctory (' + path + ') already exists' ] )
-                return None
+    if DRYRUN:
+        return path
+
+    try:
+        if not os.path.isdir( path ):
             os.mkdir( path )
-            return path
-        except Exception as e:
-            err_msg( [ 'make_directory:', e ] )
-            return None
-    else:
-        return dir
+        return path
+    except Exception as e:
+        err_msg( [ 'make_directory:', e ] )
+        return None
 
 def query( prompt ):
     try:
@@ -528,27 +524,24 @@ def query( prompt ):
         sys.exit( 1 )
 
 # check and create prefix dir
-def check_prefix( prefix_arg ):
+def check_prefix( pref ):
     "check the prefix directory"
     global query_prefix, ERROR
 
-    pref = os.path.realpath( os.path.expanduser( prefix_arg ) )
     if DRYRUN:
-        return pref
+        return True
     if os.path.isfile( pref ):
         err_msg( [ pref, 'is not a directory but a file' ] )
-        return None
+        return False
     if os.path.isdir( pref ):
         if not FLAG_YES and not query_prefix:
             warn_msg( [ 'Prefix directory already exists: ', pref ] )
-            ans = query( "Are you sure to install into '" +
-                         pref +
-                         "' directory?" )
+            ans = query( 'Are you sure to install into the prefix directory?' )
+            if ans == 'n':
+                return False
             if ans == 'a':
                 query_prefix = True # never ask again
-            elif ans == 'n':
-                ERROR = True
-    return pref
+    return True
 
 def prefix_path( prefix, how, ver ):
     "make the prefix path"
@@ -582,8 +575,8 @@ def delete_work_dir( wdir ):
     if DRYRUN:
         message( [ '[DRY] Deleting work directory ('+wdir+') .. done' ] )
         return True
-    message( [ 'Deleting work directory ('+wdir+') ..' ], newline=False )
 
+    message( [ 'Deleting work directory ('+wdir+') ..' ], newline=False )
     try_shutil  = True
     retry_count = 3
     retry       = retry_count
@@ -598,9 +591,9 @@ def delete_work_dir( wdir ):
                            check=False,
                            stdout=NULL_FS, stderr=NULL_FS ).returncode != 0:
                     raise Exception( 'rm -r -f ' + wdir + ' FAILD' )
-            # success
-            message( [ ' done' ] )
-            return True
+                # success
+                message( [ ' done' ] )
+                return True
 
         except:
             if retry == 0:
@@ -610,6 +603,7 @@ def delete_work_dir( wdir ):
             time.sleep( retry_wait )
             retry_wait *= 2
             retry -= 1
+            continue
 
 # check and create work dir
 def work_path( work, how, ver ):
@@ -625,24 +619,21 @@ def check_work( work ):
     "check working directory"
     global query_work, ERROR
 
+    if DRYRUN:
+        return True
     if os.path.isfile( work ):
         err_msg( [ work, 'is not a directory but a file' ] )
         return False
-    if not os.path.isdir( work ):
-        return True
-    if DRYRUN:
-        return True
-
-    if not FLAG_YES or query_work:
-        warn_msg( [ 'Work directory already exists:', work ] )
-        ans = query( "Delete work directory before install?" )
-        if ans == 'n':
-            ERROR = True
-            return False
-        if ans == 'a':
-            query_work = True # never ask again
-        if not delete_work_dir( work ):
-            return False
+    if os.path.isdir( work ):
+        if not FLAG_YES and not query_work:
+            warn_msg( [ 'Work directory already exists:', work ] )
+            ans = query( 'Delete work directory before install?' )
+            if ans == 'n':
+                ERROR = True
+                return False
+            if ans == 'a':
+                query_work = True # never ask again
+        return delete_work_dir( work )
     return True
 
 def create_work( work ):
@@ -964,9 +955,9 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
                         log_fs ):
             return False, retuple
         message( [ MSG_PREFIX1, 'Building', repo_glibc ], log=log_fs )
-        if make_directory( glibc_build, True ) is None:
+        if make_directory( glibc_build ) is None:
             return False, retuple
-        if make_directory( glibc_install, True ) is None:
+        if make_directory( glibc_install ) is None:
             return False, retuple
         if not execute( glibc_build, [ build_script, glibc_install ], log_fs ):
             return False, retuple
@@ -1084,7 +1075,7 @@ prefix = ARGS.prefix
 if len(prefix) > 2 and prefix[-2:] == '//':
     FLAG_SUBDIR = True
     prefix = prefix[0:-2]
-prefix_dir = check_prefix( prefix )
+prefix_dir = os.path.realpath( os.path.expanduser( prefix    ) )
 work_dir   = os.path.realpath( os.path.expanduser( ARGS.work ) )
 
 # check work dir if work can be deleted
@@ -1102,12 +1093,6 @@ if ERROR:
     NULL_FS.close()
     sys.exit( 1 )
 
-### NOW we can actually do the installation(s)
-
-message( [] )
-message( [ 'Redhat/Centos:\t\t', redhat_version ] )
-message( [ 'CPU Architecture:\t', arch ])
-
 def is_ready( how, arch, redhat, pip_ver ):
     if DRYRUN:
         return True
@@ -1116,16 +1101,10 @@ def is_ready( how, arch, redhat, pip_ver ):
         return deploy
     return develop
 
-# check work dir, delete if exists
-for how in how_list:
-    for ver in pip_vers:
-        if is_ready( how, arch, redhat_version, ver ):
-            check_work( work_path( work_dir, how, ver ) )
-if ERROR:
-    NULL_FS.close()
-    sys.exit( 1 )
-
 list_ready     = []
+list_pass0     = []
+list_pass1     = []
+list_skipped   = []
 list_not_ready = []
 list_noupdate  = []
 list_install   = []
@@ -1141,23 +1120,52 @@ for ver in pip_vers:
         elif is_already_installed( prefdir, how, ver ) and FLAG_NOUPDATE:
             list_noupdate.append( ( how, ver ) )
         else:
-            list_ready.append( ( how, ver ) )
+            list_pass0.append( ( how, ver ) )
+
+# check work dir, delete if exists
+for ( how, ver ) in list_pass0:
+    if check_prefix( prefix_path( prefix_dir, how, ver ) ):
+        list_pass1.append( ( how, ver ) )
+    else:
+        list_skipped.append( ( how, ver ) )
+for ( how, ver ) in list_pass1:
+    if check_work( work_path( work_dir, how, ver ) ):
+        list_ready.append( ( how, ver ) )
+    else:
+        list_skipped.append( ( how, ver ) )
+
+ERROR = False
+
+### NOW we can actually do the installation(s)
 
 message( [] )
-message( [ 'List of installations' ] )
-for ( how, ver ) in list_ready:
-    message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
-    prefdir = prefix_path( prefix_dir, how, ver )
-    if how == 'spack':
-        message( [ '  Prefix dir:\t', prefdir ] )
-    elif how == 'github':
-        message( [ '  Prefix dir:\t', prefdir ] )
-        message( [ '  Work dir:\t',
-                   work_path( work_dir, how, ver ) ] )
-    elif how == 'git-rccs':
-        message( [ '  Prefix dir:\t', prefdir ] )
-        message( [ '  Work dir:\t',
-                   work_path( work_dir, how, ver ) ] )
+message( [ 'Redhat/Centos:\t\t', redhat_version ] )
+message( [ 'CPU Architecture:\t', arch ])
+
+if list_ready != []:
+    message( [] )
+    message( [ 'List of installations' ] )
+    for ( how, ver ) in list_ready:
+        message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
+        prefdir = prefix_path( prefix_dir, how, ver )
+        if how == 'spack':
+            message( [ '  Prefix dir:\t', prefdir ] )
+        elif how == 'github':
+            message( [ '  Prefix dir:\t', prefdir ] )
+            message( [ '  Work dir:\t', work_path( work_dir, how, ver ) ] )
+        elif how == 'git-rccs':
+            message( [ '  Prefix dir:\t', prefdir ] )
+            message( [ '  Work dir:\t', work_path( work_dir, how, ver ) ] )
+
+if list_skipped != []:
+    message( [] )
+    if len( list_skipped ) == 1:
+        warn_msg( [ 'The following is skipped' ] )
+    else:
+        warn_msg( [ 'The followings are skipped' ] )
+
+    for ( how, ver ) in list_skipped:
+        message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
 
 if list_not_ready != []:
     message( [] )
