@@ -759,8 +759,6 @@ def execute( wd, cmd, log_fs ):
 def is_already_installed( prefix, how, pip_ver ):
     global spack_path
 
-    print( 'is_already_installed(', how, pip_ver, ')' )
-
     if DRYRUN:
         return False
 
