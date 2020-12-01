@@ -365,10 +365,10 @@ FLAG_NOUPDATE = ARGS.noupdate
 FLAG_KEEP     = ARGS.keep
 FLAG_YES      = ARGS.yes
 
-test_threshold = ARGS.threshold
-if test_threshold < 0:
-    test_threshold = 10
-os.environ['PIP_TEST_THRESHOLD'] = str(test_threshold)
+if ARGS.threshold < 0:
+    threshold = [ 'PIP_TEST_THRESHOLD=10' ]
+else:
+    threshold = [ 'PIP_TEST_THRESHOLD='+str(ARGS.threshold) ]
 
 def check_command( command ):
     "check if the Linux command exists"
@@ -715,7 +715,7 @@ def do_poll( proc, t, dot, inc, tmax, log_fs, silent ):
         message( [ ' - OK' ], log=log_fs )
     return True, t
 
-def execute( wd, cmd, log_fs, silent=False ):
+def execute( wd, cmd, log_fs, silent=False, env='' ):
     "execute a Linux command"
     global ERROR
 
@@ -739,7 +739,7 @@ def execute( wd, cmd, log_fs, silent=False ):
             cmd_list = [ 'cd', wd, '&&' ] + cmd
         else:
             cmd_list = cmd
-        shell_cmd = [ '/bin/sh', '-c', ' '.join( cmd_list ) ]
+        shell_cmd = [ '/bin/sh', '-c', ' '.join( [ env ] + cmd_list ) ]
         proc = sp.Popen( shell_cmd, close_fds=True,
                          stdout=log_fs, stderr=log_fs )
 
@@ -791,6 +791,7 @@ def is_already_installed( prefix, how, pip_ver ):
     return False
 
 def install_yum( pip_ver, work_dir, log_fs ):
+    global threshold
     "yum install"
     yum_pip = resource_id( 'yum', pip_ver )
     message( [ MSG_ENTER, 'Yum install', yum_pip ], log=log_fs )
@@ -813,7 +814,7 @@ def install_yum( pip_ver, work_dir, log_fs ):
                         [ configure, '--with-pip=/usr' ],
                         log_fs ):
             return False, retuple
-        if not execute( test_dir, [ 'make', 'test' ], log_fs ):
+        if not execute( test_dir, [ 'make', 'test' ], log_fs, env=threshold ):
             return False, retuple
     return True, retuple
 
@@ -909,6 +910,7 @@ def wget_install( work_dir, prefix_dir, pkgname, url, log_fs ):
 
 def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     "Git (source) install"
+    global threshold
 
     branch_pip = 'pip-' + str( pip_ver )
 
@@ -1011,7 +1013,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
                         [ configure, '--with-pip=' + prefix_dir ],
                         log_fs ):
             return False, retuple
-        if not execute( test_dir, [ 'make', 'test' ], log_fs ):
+        if not execute( test_dir, [ 'make', 'test' ], log_fs, env=threshold ):
             return False, retuple
 
     if ARGS.noglibc or ARGS.nogdb:
