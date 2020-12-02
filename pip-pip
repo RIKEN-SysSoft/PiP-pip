@@ -870,7 +870,7 @@ def byte_to_char( bytes ):
     chstr = ''
     for byte in bytes:
         chstr += chr( byte )
-    return string
+    return chstr
 
 def wget_install( work_dir, prefix_dir, pkgname, url_b, log_fs ):
     "wget install for required package"
