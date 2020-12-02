@@ -663,6 +663,7 @@ def check_file( file ):
 def do_poll( proc, t, dot, inc, tmax, log_fs, silent ):
     "do poll and output dots"
 
+    t0 = t
     if t < 100:
         delta = 0.2
     elif t < 1000:
@@ -877,7 +878,7 @@ def byte_to_char( byte_str ):
 
 def wget_install( work_dir, prefix_dir, pkgnam_b, url_b, log_fs ):
     "wget install for required package"
-    pkgname = byto_to_char( pkgnam_b )
+    pkgname = byte_to_char( pkgnam_b )
     url     = byte_to_char( url_b    )
     if not execute( work_dir, [ 'wget', url ], log_fs ):
         err_msg( [ 'wget_install: wget', url, '-- FAILED' ], log=log_fs )
