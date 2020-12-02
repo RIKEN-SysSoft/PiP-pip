@@ -165,7 +165,7 @@ query_prefix  = False
 query_work    = False
 spack_path    = None
 DRYRUN        = False
-FLAG_SUBDIR   = False
+FLAG_SUBDIR   = True
 FLAG_NOUPDATE = False
 FLAG_KEEP     = False
 FLAG_QUIET    = False
@@ -310,8 +310,8 @@ parser.add_argument( '--version', '-v',
                      type    = str,
                      action  = 'append' )
 parser.add_argument( '--prefix', '-p',
-                     help    = "install directory " \
-                         "([spack,] github. default 'install')",
+                     help    = "install (prefix) directory " \
+                        "([spack,] github, default 'install')",
                      type    = str,
                      default = 'install',
                      nargs   = '?' )
@@ -337,13 +337,16 @@ parser.add_argument( '--noglibc', '-noglibc',
                      help    = 'do not build PiP-glibc and PiP_gdb (github)',
                      action  = 'store_true' )
 parser.add_argument( '--nogdb', '-nogdb',
-                     help    = 'do not build PiP_gdb (github)',
+                     help    = 'do not build PiP-gdb (github)',
                      action  = 'store_true' )
 parser.add_argument( '--notest', '-notest',
                      help    = 'Not to test installed PiP',
                      action  = 'store_true' )
 parser.add_argument( '--noupdate', '-noupdate',
                      help    = 'Do not update if PiP is already installed',
+                     action  = 'store_true' )
+parser.add_argument( '--nosubdir', '-nosubdir',
+                     help    = 'Do not create subdirectory(ies) in the prefix directory',
                      action  = 'store_true' )
 parser.add_argument( '--threshold', '-t',
                      type    = int,
@@ -369,6 +372,9 @@ if ARGS.threshold < 0:
     threshold = [ 'PIP_TEST_THRESHOLD=10' ]
 else:
     threshold = [ 'PIP_TEST_THRESHOLD='+str(ARGS.threshold) ]
+
+if ARGS.nosubdir:
+    FLAG_SUBIDR = False
 
 def check_command( command ):
     "check if the Linux command exists"
@@ -484,9 +490,6 @@ else:
             err_msg( [ ','.join(errlist),
                        'are not acceptable values of --version' ] )
 
-if len( how_list ) > 1 or len( pip_vers ) > 1:
-    FLAG_SUBDIR = True
-
 # check arch
 arch = cpu_arch()
 if not arch in [ 'x86_64', 'aarch64' ]:
@@ -506,17 +509,12 @@ def make_directory( path ):
         err_msg( [ 'make_directory:', e ] )
         return None
 
-def query( prompt ):
+def query( prompt, ans ):
     try:
         while True:
-            choice = input( prompt +
-                            " 'yes', 'all' or 'no' [Y/A/N]: " ).lower()
-            if choice[0] == 'y':
-                return 'y'
-            if choice[0] == 'a':
-                return 'a'
-            if choice[0] == 'n':
-                return 'n'
+            choice = input( prompt ).lower()
+            if choice != '' and choice[0] in ans:
+                return choice[0]
             continue
     except:
         message( [] )
@@ -536,7 +534,9 @@ def check_prefix( pref ):
     if os.path.isdir( pref ):
         if not FLAG_YES and not query_prefix:
             warn_msg( [ 'Prefix directory already exists: ', pref ] )
-            ans = query( 'Are you sure to install into the prefix directory?' )
+            ans = query( 'Are you sure to install into the prefix directory? ' \
+                         "'yes', 'all' or 'no' [Y/A/N]: ",
+                         'yan' )
             if ans == 'n':
                 return False
             if ans == 'a':
@@ -627,7 +627,9 @@ def check_work( work ):
     if os.path.isdir( work ):
         if not FLAG_YES and not query_work:
             warn_msg( [ 'Work directory already exists:', work ] )
-            ans = query( 'Delete work directory before install?' )
+            ans = query( 'Delete work directory before install? ' \
+                         "'yes', 'all' or 'no' [Y/A/N]: ",
+                         'yan' )
             if ans == 'n':
                 ERROR = True
                 return False
@@ -1077,13 +1079,8 @@ if ERROR:
     NULL_FS.close()
     sys.exit( 1 )
 
-#check prefix dir
-prefix = ARGS.prefix
-if len(prefix) > 2 and prefix[-2:] == '//':
-    FLAG_SUBDIR = True
-    prefix = prefix[0:-2]
-prefix_dir = os.path.realpath( os.path.expanduser( prefix    ) )
-work_dir   = os.path.realpath( os.path.expanduser( ARGS.work ) )
+prefix_dir = os.path.realpath( os.path.expanduser( ARGS.prefix ) )
+work_dir   = os.path.realpath( os.path.expanduser( ARGS.work   ) )
 
 # check work dir if work can be deleted
 common = os.path.commonprefix( [ work_dir, prefix_dir ] )
@@ -1199,10 +1196,16 @@ if list_noupdate != []:
         message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
 
 if list_ready == []:
-    message( [] )
-    err_msg( [ 'Nothing to install' ] )
+    err_msg( [ '\nNothing to install' ] )
     NULL_FS.close()
     sys.exit( 1 )
+
+if not FLAG_YES:
+    message( [] )
+    ans = query( 'Proceed? [Y/N] ', 'yn' )
+    if ans == 'n':
+        NULL_FS.close()
+        sys.exit( 1 )
 
 ## let's start installation(s)
 

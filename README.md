@@ -81,6 +81,10 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 - `--noupdate`
   Do not update PiP lib. if it is already installed (`docker` and `spack`)
 
+- `--nosubdir`
+  Do not create subdirectory(ies) in the prefix (install)
+  directory. See below.
+
 - `--notest`
   Do not run PiP testsuite after installed
 
@@ -99,20 +103,19 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 - `--help`
   Display help message.
 
-The `--how` and/or `--version` options may have mutiple values. In this
-case, `pip-pip` will try to install all possible combinations of the
-two options. `pip-pip` will create subdirectories right under the install
-directory (`--prefix`) named in the
+## Prefix subdirectory(ies)
+
+The `--how` and/or `--version` options may have mutiple values. To
+handle this case, `pip-pip` will try to install all possible
+combinations of the two options. `pip-pip` will create subdirectories
+right under the install directory (`--prefix`) named in the
 
     <ARCH>-<LINUX>-<HOW>-<PIP-VERSION>
+    e.g) x86_64_redhat-7_spack_pip-3, aarch64_redhat-8_github_pip-2, ..
 
 style and each installation of the combinations will be installed in
-one of those sub-directries.
-When the the specified install directory is ended with `//`, then the
-sub-directory will also be created in the same way even if only a
-single installtion is specified. As with the work directory, those
-subdirectory(ies) are created right under the specified work directory
-in any cases.
+one of those subdirectries. The `--nosubdir` option supresses this
+subdirectory creation.
 
 # PiP-glibc and PiP-gdb
 
