@@ -866,8 +866,15 @@ def install_spack( prefix, how, pip_ver, log_fs ):
         return False, retuple
     return True, retuple
 
-def wget_install( work_dir, prefix_dir, pkgname, url, log_fs ):
+def byte_to_char( bytes ):
+    chstr = ''
+    for byte in bytes:
+        chstr += chr( byte )
+    return string
+
+def wget_install( work_dir, prefix_dir, pkgname, url_b, log_fs ):
     "wget install for required package"
+    url = byte_to_char( url_b )
     if not execute( work_dir, [ 'wget', url ], log_fs ):
         err_msg( [ 'wget_install: wget', url, '-- FAILED' ], log=log_fs )
         raise Exception()
