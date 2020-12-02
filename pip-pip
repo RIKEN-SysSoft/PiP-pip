@@ -726,7 +726,7 @@ def execute( wd, cmd, log_fs, silent=False, env=[] ):
 
     try:
         if not silent:
-            message( [ MSG_PREFIX ] + cmd, newline=False, log=log_fs )
+            message( [ MSG_PREFIX ] + env + cmd, newline=False, log=log_fs )
             message( [], newline=True, log=log_fs, logonly=True )
         if wd is not None:
             cmd_list = [ 'cd', wd, '&&' ] + cmd
