@@ -868,15 +868,17 @@ def install_spack( prefix, how, pip_ver, log_fs ):
         return False, retuple
     return True, retuple
 
-def byte_to_char( bytes ):
-    chstr = ''
-    for byte in bytes:
-        chstr += chr( byte )
-    return chstr
+def byte_to_char( byte_str ):
+    "convert byte string to char (for compatibility between Python2 and 3)"
+    ch_str = ''
+    for byte in byte_str:
+        ch_str += chr( ord( byte ) )
+    return ch_str
 
-def wget_install( work_dir, prefix_dir, pkgname, url_b, log_fs ):
+def wget_install( work_dir, prefix_dir, pkgnam_b, url_b, log_fs ):
     "wget install for required package"
-    url = byte_to_char( url_b )
+    pkgname = byto_to_char( pkgnam_b )
+    url     = byte_to_char( url_b    )
     if not execute( work_dir, [ 'wget', url ], log_fs ):
         err_msg( [ 'wget_install: wget', url, '-- FAILED' ], log=log_fs )
         raise Exception()
@@ -951,8 +953,8 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
 
     glibc_srcdir  = os.path.join( work_dir,     pip + '-glibc'  )
     build_script  = os.path.join( glibc_srcdir, 'build.sh'      )
-    glibc_build   = os.path.join( work_dir,     'glibc_build'   )
-    glibc_install = os.path.join( prefix_dir,   'glibc_install' )
+    glibc_build   = os.path.join( work_dir,     'glibc-build'   )
+    glibc_install = os.path.join( prefix_dir,   'glibc-install' )
     if ARGS.noglibc:
         message( [ MSG_PREFIX1, 'Skipping PiP-glibc build (--noglibc)' ],
                  log=log_fs )
@@ -982,8 +984,8 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
         return False, retuple
 
     message( [ MSG_PREFIX1, 'Building', repo_pip ], log=log_fs )
-    pip_dir = os.path.join( work_dir, pip )
-    configure = os.path.join( pip_dir, 'configure' )
+    pip_dir   = os.path.join( work_dir, pip )
+    configure = os.path.join( pip_dir,  'configure' )
     if ARGS.noglibc:
         if not execute( pip_dir,
                         [ configure, '--prefix=' + prefix_dir ],
@@ -1200,7 +1202,7 @@ if list_ready == []:
     NULL_FS.close()
     sys.exit( 1 )
 
-if not FLAG_YES:
+if not FLAG_YES and not DRYRUN:
     message( [] )
     ans = query( 'Proceed? [Y/N] ', 'yn' )
     if ans == 'n':
