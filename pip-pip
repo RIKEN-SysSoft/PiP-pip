@@ -871,9 +871,10 @@ def install_spack( prefix, how, pip_ver, log_fs ):
 
 def byte_to_char( byte_str ):
     "convert byte string to char (for compatibility between Python2 and 3)"
-    ch_str = ''
-    for byte in byte_str:
-        ch_str += chr( ord( byte ) )
+    try:
+        chstr = byte_str.decode() # python 3
+    except:
+        chstr = byte_str.encode() # python 2
     return ch_str
 
 def wget_install( work_dir, prefix_dir, pkgnam_b, url_b, log_fs ):
