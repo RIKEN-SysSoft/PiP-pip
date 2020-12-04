@@ -77,7 +77,7 @@ def spack_url():
     spack_url     = 'https://github.com/spack/spack.git'
     spack_url_dev = 'git@git.sys.r-ccs.riken.jp:software/PIP-Spack.git'
 
-    if not ARGS.develop:
+    if how == 'soack':
         url = spack_url
     else:
         url = spack_url_dev
@@ -354,11 +354,11 @@ parser.add_argument( '--threshold', '-t',
                      default = 10,
                      help     = 'The threshold of the number of PiP testsuite ' \
                      'errors (default 10)' )
-parser.add_argument( '--develop',
-                     help    = 'For developing PiP-pip',
-                     action  = 'store_true' )
 parser.add_argument( '--dryrun', '--dry', '-d',
                      help    = 'dry run',
+                     action  = 'store_true' )
+parser.add_argument( '--develop',
+                     help    = 'For developing PiP-pip',
                      action  = 'store_true' )
 ARGS = parser.parse_args()
 
@@ -445,7 +445,7 @@ if 'spack' in how_list:
     if check_command( 'spack' ):
         spack_path = 'spack'
     elif not check_command( 'git' ):
-        spack_path = None
+        spack_path = ''
         err_msg( [ "'git' command not found (required to install Spack)" ] )
 if 'github' in how_list or 'git-rccs' in how_list:
     if not check_command( 'git' ):
@@ -771,11 +771,8 @@ def is_already_installed( prefix, how, pip_ver ):
                     sudo_cmd + [ 'docker', 'inspect', docker_pip ],
                     NULL_FS, True ):
             return True;
-    elif how == 'spack':
+    elif how == 'spack' and spack_path is not None:
         spack_pip = resource_id( how, pip_ver )
-        if spack_path is None:
-            ( url, bsnam ) = spack_url()
-            spack_path = os.path.join( prefix, bsnam, 'bin', 'spack' )
         if execute( None, [ spack_path, 'find', spack_pip ], NULL_FS, True ):
             return True;
     else: # GIT
@@ -836,12 +833,14 @@ def install_docker( pip_ver, log_fs ):
 def install_spack( prefix, how, pip_ver, log_fs ):
     "Spack install"
     global spack_path
+
     spack_pip = resource_id( 'spack', pip_ver )
+    message( [ MSG_ENTER, 'Spack install', spack_pip ], log=log_fs )
     retuple = ( 'spack', spack_pip, '' )
-    if spack_path == '':        # Spack unable
+
+    if spack_path == '':        # Spack not found
         return False, retuple
 
-    message( [ MSG_ENTER, 'Spack install', spack_pip ], log=log_fs )
     if spack_path is None:
         prefix_dir = create_prefix( prefix, how, pip_ver )
         if prefix_dir is None:
