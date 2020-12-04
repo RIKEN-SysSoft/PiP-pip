@@ -59,7 +59,7 @@ git_repo_tab  = { 'github'   : { 'glibc': 'PiP-glibc.git',
 gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ),
                    8 : ( 'centos/glibc-2.28-72.el8_1.1.pip.branch',
-                         'centos/gdb-7.6.1-94.el7.pip.branch' ) }
+                         'centos/gdb-8.2-12.el8.pip.branch' ) }
 
 def resource_id( how, pip_ver ):
     if how == 'yum':
@@ -617,7 +617,7 @@ def work_path( work, how, ver ):
 
 def check_work( work ):
     "check working directory"
-    global query_work, ERROR
+    global list_del_work, query_work, ERROR
 
     if DRYRUN:
         return True
@@ -635,7 +635,7 @@ def check_work( work ):
                 return False
             if ans == 'a':
                 query_work = True # never ask again
-        return delete_work_dir( work )
+        list_del_work.append( work )
     return True
 
 def create_work( work ):
@@ -1130,6 +1130,8 @@ for ver in pip_vers:
         else:
             list_pass0.append( ( how, ver ) )
 
+list_del_work = []
+
 # check work dir, delete if exists
 for ( how, ver ) in list_pass0:
     if check_prefix( prefix_path( prefix_dir, how, ver ) ):
@@ -1199,6 +1201,16 @@ if list_noupdate != []:
     for ( how, ver ) in list_noupdate:
         message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
 
+if list_del_work != []:
+    message( [] )
+    if len( list_del_work ) == 1:
+        warn_msg( [ 'The following directory will be deleted' ] )
+    else:
+        warn_msg( [ 'The following directories will be deleted' ] )
+
+    for wrk in list_del_work:
+        message( [ '\t'+wrk ] )
+
 if list_ready == []:
     err_msg( [ '\nNothing to install' ] )
     NULL_FS.close()
@@ -1212,6 +1224,11 @@ if not FLAG_YES and not DRYRUN:
         sys.exit( 1 )
 
 ## let's start installation(s)
+
+if list_del_work != []:
+    message( [] )
+    for wrk in list_del_work:
+        delete_work_dir( wrk )
 
 ERROR = False
 
