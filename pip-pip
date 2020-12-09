@@ -358,7 +358,7 @@ parser.add_argument( '--dryrun', '--dry', '-d',
                      help    = 'dry run',
                      action  = 'store_true' )
 parser.add_argument( '--develop',
-                     help    = 'For developing PiP-pip',
+                     help    = 'For developing and testing',
                      action  = 'store_true' )
 ARGS = parser.parse_args()
 
@@ -1074,6 +1074,11 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
         if not check_file( pip_gdb ):
             err_msg( [ 'Unable to find: ', pip_gdb ], log=log_fs )
             return False, retuple
+
+        message( [ MSG_PREFIX1, 'Testing', repo_gdb ], log=log_fs )
+        test_script = os.path.join( gdb_dir, 'test.sh' )
+        if not execute( gdb_dir, [ test_script ], log_fs ):
+            return False, retuple
     if not FLAG_KEEP:
         delete_work_dir( work_dir )
     return True, retuple
@@ -1216,8 +1221,7 @@ if list_ready == []:
     sys.exit( 1 )
 
 if not FLAG_YES and not DRYRUN:
-    message( [] )
-    ans = query( 'Proceed? [Y/N] ', 'yn' )
+    ans = query( '\nProceed? [Y/N]: ', 'yn' )
     if ans == 'n':
         NULL_FS.close()
         sys.exit( 1 )
