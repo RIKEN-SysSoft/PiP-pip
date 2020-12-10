@@ -127,6 +127,8 @@ relaxes this limitation up to 300 PiP tasks.  In addition to this,
 PiP-glibc allows PiP-gdb to access symbols defined in the PiP tasks.
 This implies PiP-gdb depends on PiP-glibc.
 
+On CentOS/RedHat 8, PiP will not work at all without having PiP-glibc.
+
 # Author
 
 Atsushi Hori, Riken CCS
