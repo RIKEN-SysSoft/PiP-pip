@@ -1040,7 +1040,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
             build_script = os.path.join( gdb_dir, 'build.sh' )
             try:
                 psproc = sp.Popen( [ build_script, '--missing' ],
-                                   stdout=sp.PIPE, stderr=NULL_FS )
+                                   stdout=sp.PIPE, stderr=log_fs )
                 while True:
                     mod = psproc.stdout.readline()
                     if mod == '':
