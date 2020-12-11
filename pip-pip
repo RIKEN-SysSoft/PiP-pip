@@ -77,7 +77,7 @@ def spack_url():
     spack_url     = 'https://github.com/spack/spack.git'
     spack_url_dev = 'git@git.sys.r-ccs.riken.jp:software/PIP-Spack.git'
 
-    if how == 'soack':
+    if how == 'spack':
         url = spack_url
     else:
         url = spack_url_dev
@@ -225,8 +225,42 @@ def concat_urls( url0, url1 ):
                 sys.exit( 1 )
     return urlparser.urljoin( url0+'/', url1 )
 
-GIT_CLONE = [ 'git', 'clone' ]
 NULL_FS = open( os.devnull, 'w' )
+
+def git_clone( dir, url, branch, log_fs ):
+    global ARGS
+    git_rccs = 'git@git.sys.r-ccs.riken.jp:software'
+    if branch != '':
+        if execute( dir, [ 'git', 'clone', '-b', branch, url ], log_fs ):
+            return True
+    else:
+        if execute( dir, [ 'git', 'clone', url ], log_fs ):
+            return True
+    # get from gitweb
+    if url[0:len(git_rccs)] != git_rccs:
+        return False
+    user = ARGS.user
+    if user == '' or not ARGS.develop:
+        err_msg( [ "User must be given" ] )
+        return False
+    repo_name = os.path.basename( url )
+    if branch != '':
+        url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
+                     repo_name + ';a=snapshot;h=refs/heads/' + \
+                     branch + ';sf=tgz'
+    else:
+        url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
+                     repo_name + ';a=snapshot;h=refs/heads/master;sf=tgz'
+    if not excute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', url_gitweb ], 
+                   log_fs ):
+        return False
+    excute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
+    if not excute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
+        return False
+    excute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
+    if not excute( dir, [ 'mv', '-f', repo_name+'*', repo_name ], log_fs ):
+        return False
+    return True
 
 def get_redhat_version():
     "obtain RedHat version"
@@ -357,9 +391,14 @@ parser.add_argument( '--threshold', '-t',
 parser.add_argument( '--dryrun', '--dry', '-d',
                      help    = 'dry run',
                      action  = 'store_true' )
-parser.add_argument( '--develop',
+parser.add_argument( '--develop', '--dev',
                      help    = 'For developing and testing',
                      action  = 'store_true' )
+parser.add_argument( '--user', '-u',
+                     help    = "Username",
+                     type    = str,
+                     nargs   = '?',
+                     default = '' )
 ARGS = parser.parse_args()
 
 DRYRUN        = ARGS.dryrun
@@ -797,7 +836,7 @@ def install_yum( pip_ver, work_dir, log_fs ):
                                   git_repo_tab['github']['test']  )
 
         message( [ MSG_PREFIX1, 'Testing', repo_test ], log=log_fs )
-        if not execute( work_dir, GIT_CLONE + [ repo_test ], log_fs ):
+        if not git_clone( work_dir, repo_test, '', log_fs ):
             return False, retuple
         test_dir = os.path.join( work_dir, 'PiP-Testsuite' )
         configure = os.path.join( test_dir, 'configure' )
@@ -853,7 +892,7 @@ def install_spack( prefix, how, pip_ver, log_fs ):
                 return False, retuple
         else:
             message( [ MSG_PREFIX1, 'Cloning Spack at', prefix_dir ], log=log_fs )
-            if not execute( prefix_dir, GIT_CLONE + [ url ], log_fs ):
+            if not git_clone( prefix_dir, url, '', log_fs ):
                 spack_path = ''     # mark as not found
                 return False, retuple
         spack_path = os.path.join( prefix_dir, bsnam, 'bin', 'spack' )
@@ -962,9 +1001,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     else:
         message( [ MSG_PREFIX1, 'Cloning', repo_glibc, branch_glibc ],
                  log=log_fs )
-        if not execute( work_dir,
-			GIT_CLONE + [ '-b', branch_glibc, repo_glibc ],
-                        log_fs ):
+        if not git_clone( work_dir, repo_glibc, branch_glibc, log_fs ):
             return False, retuple
         message( [ MSG_PREFIX1, 'Building', repo_glibc ], log=log_fs )
         if make_directory( glibc_build ) is None:
@@ -979,9 +1016,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
             return False, retuple
 
     message( [ MSG_PREFIX1, 'Cloning', repo_pip, branch_pip ], log=log_fs )
-    if not execute( work_dir,
-                    GIT_CLONE + [ '-b', branch_pip, repo_pip ],
-                    log_fs ):
+    if not git_clone( work_dir, repo_pip, branch_pip, log_fs ):
         return False, retuple
 
     message( [ MSG_PREFIX1, 'Building', repo_pip ], log=log_fs )
@@ -1008,7 +1043,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
 
     if not ARGS.notest:
         message( [ MSG_PREFIX1, 'Testing', repo_pip ], log=log_fs )
-        if not execute( work_dir, GIT_CLONE + [ repo_test ], log_fs ):
+        if not git_clone( work_dir, repo_test, '', log_fs ):
             return False, retuple
         test_dir = os.path.join( work_dir, pip + '-Testsuite' )
         configure = os.path.join( test_dir, 'configure' )
@@ -1026,9 +1061,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     else:
         message( [ MSG_PREFIX1, 'Cloning', repo_gdb, branch_gdb ],
                  log=log_fs )
-        if not execute( work_dir,
-                        GIT_CLONE + [ '-b', branch_gdb, repo_gdb ],
-                        log_fs ):
+        if not git_clone( work_dir, repo_gdb, branch_gdb, log_fs ):
             return False, retuple
 
         inst_pkgs = []
