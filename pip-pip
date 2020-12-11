@@ -252,16 +252,24 @@ def git_clone( dir, url, branch, log_fs ):
     else:
         url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
                      repo_name + ';a=snapshot;h=refs/heads/master;sf=tgz'
-    if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', '"'+url_gitweb+'"' ], 
-                   log_fs ):
-        return False
+    if user == 'netrc':
+        if not execute( dir, [ 'curl', '-n', '-o', repo_name+'.tgz', 
+                               '"'+url_gitweb+'"' ], 
+                        log_fs ):
+            return False
+    else:
+        if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', 
+                               '"'+url_gitweb+'"' ], 
+                        log_fs ):
+            return False
     execute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
     if not execute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
         return False
     execute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
-    repo_wo_git = repo_name.split( '.' )[0]
+    repo_wo_git = os.path.splitext( repo_name )[0]
+    gitweb_name = repo_wo_git + '-' + branch.replace('/','.')
     for dent in os.listdir( dir ):
-        if dent[0:len(repo_wo_git)] == repo_wo_git:
+        if dent[0:len(gitweb_name)] == gitweb_name:
             if not execute( dir, [ 'mv', '-f', dent, repo_wo_git ], log_fs ):
                 return False
             return True
