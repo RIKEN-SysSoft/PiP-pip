@@ -237,6 +237,7 @@ def git_clone( dir, url, branch, log_fs ):
         if execute( dir, [ 'git', 'clone', url ], log_fs ):
             return True
     # get from gitweb
+    error = False
     if url[0:len(git_rccs)] != git_rccs:
         return False
     user = ARGS.user
@@ -251,16 +252,20 @@ def git_clone( dir, url, branch, log_fs ):
     else:
         url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
                      repo_name + ';a=snapshot;h=refs/heads/master;sf=tgz'
-    if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', url_gitweb ], 
+    if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', '"'+url_gitweb+'"' ], 
                    log_fs ):
         return False
     execute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
     if not execute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
         return False
     execute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
-    if not execute( dir, [ 'mv', '-f', repo_name+'*', repo_name ], log_fs ):
-        return False
-    return True
+    repo_wo_git = repo_name.split( '.' )[0]
+    for dent in os.listdir( dir ):
+        if dent[0:len(repo_wo_git)] == repo_wo_git:
+            if not execute( dir, [ 'mv', '-f', dent, repo_wo_git ], log_fs ):
+                return False
+            return True
+    return Flase
 
 def get_redhat_version():
     "obtain RedHat version"
