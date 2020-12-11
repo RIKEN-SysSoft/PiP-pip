@@ -251,14 +251,14 @@ def git_clone( dir, url, branch, log_fs ):
     else:
         url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
                      repo_name + ';a=snapshot;h=refs/heads/master;sf=tgz'
-    if not excute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', url_gitweb ], 
+    if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', url_gitweb ], 
                    log_fs ):
         return False
-    excute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
-    if not excute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
+    execute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
+    if not execute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
         return False
-    excute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
-    if not excute( dir, [ 'mv', '-f', repo_name+'*', repo_name ], log_fs ):
+    execute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
+    if not execute( dir, [ 'mv', '-f', repo_name+'*', repo_name ], log_fs ):
         return False
     return True
 
