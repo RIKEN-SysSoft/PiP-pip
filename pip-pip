@@ -116,7 +116,7 @@ ready = { ( 'yum',      'x86_64',  7, 1 ): ( True,  True  ),
           ( 'spack',    'x86_64',  7, 3 ): ( False, True  ),
           ( 'spack',    'x86_64',  8, 1 ): ( False, False ),
           ( 'spack',    'x86_64',  8, 2 ): ( False, True  ),
-          ( 'spack',    'x86_64',  8, 3 ): ( True,  True  ),
+          ( 'spack',    'x86_64',  8, 3 ): ( False, True  ),
           ( 'spack',    'aarch64', 7, 1 ): ( False, False ),
           ( 'spack',    'aarch64', 7, 2 ): ( False, True  ),
           ( 'spack',    'aarch64', 7, 3 ): ( False, True  ),
@@ -156,8 +156,8 @@ MSG_EXIT    = '<<<'
 MSG_ERROR   = '<<E'
 MSG_PREFIX  ='---'
 MSG_PREFIX1 ='###'
-ERR_PREFIX  ='ERROR:'
-WARN_PREFIX ='WARNING:'
+ERR_PREFIX  ='PIP-PIP ERROR:'
+WARN_PREFIX ='PIP-PIP WARNING:'
 SEP = '\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n'
 
 sudo_cmd      = []
@@ -186,11 +186,11 @@ def mesg( words, newline, fs ):
         print( '', file=fs )
     fs.flush()
 
-def message( words, newline=True, log=None, logonly=False ):
+def message( words, newline=True, out=sys.stdout, log=None ):
     "print message"
 
-    if not logonly and not FLAG_QUIET:
-        mesg( words, newline, sys.stdout )
+    if out is not None and not FLAG_QUIET:
+        mesg( words, newline, out )
     if log is not None and not DRYRUN:
         mesg( words, newline, log )
 
@@ -199,11 +199,11 @@ def err_msg( words, log=None ):
     global ERROR
 
     ERROR = True
-    message( [ ERR_PREFIX ] + words, log=log )
+    message( [ ERR_PREFIX ] + words, out=sys.stderr, log=log )
 
 def warn_msg( words, newline=True, log=None ):
     "print warning message"
-    message( [ WARN_PREFIX ] + words, newline, log=log )
+    message( [ WARN_PREFIX ] + words, newline, out=sys.stderr, log=log )
 
 urlparser = None
 def concat_urls( url0, url1 ):
@@ -298,7 +298,10 @@ def cpu_arch():
 
 def is_privileged( log_fs ):
     "check if the current user can sudo"
-    global sudo_cmd, SUDO_ERR
+    global ARGS, sudo_cmd, SUDO_ERR
+
+    if DRYRUN:
+        return True
 
     if SUDO_ERR:
         return False
@@ -313,7 +316,7 @@ def is_privileged( log_fs ):
         if sudo_cmd != []:
             return True
 
-    sudo_rc = sp.call( [ '/bin/sh', '-c', 'sudo -S true' ],
+    sudo_rc = sp.call( [ '/bin/sh', '-c', 'sudo -S true < /dev/null' ],
                        stdout=NULL_FS, stderr=NULL_FS )
     if sudo_rc == 0:
         able_to_sudo = True
@@ -325,27 +328,21 @@ def is_privileged( log_fs ):
             sudo_cmd = [ 'sudo' ]
             return True
         sudo_cmd = []
-        if not DRYRUN:
-            err_msg(  [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
-            SUDO_ERR = True
-        else:
-            warn_msg( [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
-    elif DRYRUN:
-        warn_msg( [ "'"+user+"'", 'is unable to sudo and no --sudo option' ],
-                  log=log_fs )
+        err_msg(  [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
+        SUDO_ERR = True
     else:
         SUDO_ERR = True
         if able_to_sudo:
-            err_msg(  [ '--sudo option is required to sudo' ], log=log_fs )
+            err_msg(  [ '--sudo option is required' ], log=log_fs )
         else:
-            err_msg(  [ "'"+user+"'", 'is unable to sudo and no --sudo option' ],
-                      log=log_fs )
+            err_msg(  [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
     return False
 
 cmd = sys.argv[0]
 
 parser = argparse.ArgumentParser( description='pip-pip: Process-in-Process '+
                                   'package installing program',
+                                  prog='pip-pip',
                                   add_help = True )
 parser.add_argument( '--how', '-H',
                      help    = 'specifying how to install ' \
@@ -375,24 +372,24 @@ parser.add_argument( '--sudo', '-s',
                      help    = 'allow sudo (yum, docker)',
                      action  = 'store_true' )
 parser.add_argument( '--yes', '-y',
-                     help    = "answer 'yes' to the all prompt(s)",
+                     help    = "answer 'yes' to all questions",
                      action  = 'store_true' )
 parser.add_argument( '--quiet', '-q',
                      help    = 'quiet mode',
                      action  = 'store_true' )
-parser.add_argument( '--noglibc', '-noglibc',
+parser.add_argument( '--noglibc',
                      help    = 'do not build PiP-glibc and PiP_gdb (github)',
                      action  = 'store_true' )
-parser.add_argument( '--nogdb', '-nogdb',
+parser.add_argument( '--nogdb',
                      help    = 'do not build PiP-gdb (github)',
                      action  = 'store_true' )
-parser.add_argument( '--notest', '-notest',
-                     help    = 'Not to test installed PiP',
+parser.add_argument( '--notest',
+                     help    = 'Not testing installed PiP (and PiP-gdb)',
                      action  = 'store_true' )
-parser.add_argument( '--noupdate', '-noupdate',
-                     help    = 'Do not update if PiP is already installed',
+parser.add_argument( '--noupdate',
+                     help    = 'Do not update if specified PiP installation exists',
                      action  = 'store_true' )
-parser.add_argument( '--nosubdir', '-nosubdir',
+parser.add_argument( '--nosubdir',
                      help    = 'Do not create subdirectory(ies) in the prefix directory',
                      action  = 'store_true' )
 parser.add_argument( '--threshold', '-t',
@@ -401,14 +398,19 @@ parser.add_argument( '--threshold', '-t',
                      default = 10,
                      help     = 'The threshold of the number of PiP testsuite ' \
                      'errors (default 10)' )
+parser.add_argument( '--ready', '-r',
+                     help    = "list ready to install and exit",
+                     type    = str,
+                     nargs   = '?',
+                     default = '' )
 parser.add_argument( '--dryrun', '--dry', '-d',
                      help    = 'dry run',
                      action  = 'store_true' )
 parser.add_argument( '--develop', '--dev',
-                     help    = 'For developing and testing',
+                     help=argparse.SUPPRESS,
                      action  = 'store_true' )
-parser.add_argument( '--user', '-u',
-                     help    = "Username",
+parser.add_argument( '--user',
+                     help=argparse.SUPPRESS,
                      type    = str,
                      nargs   = '?',
                      default = '' )
@@ -485,23 +487,31 @@ else:
 
 if 'yum' in how_list:
     if not check_command( 'yum' ):
-        err_msg( [ "'yum' command not found" ] )
-    else:
-        is_privileged( None )
+        warn_msg( [ "'yum' command not found" ] )
+    elif not is_privileged( None ):
+        how_list.remove( 'yum' )
 if 'docker' in how_list:
     if not check_command( 'docker' ):
-        err_msg( [ "'docker' command not found" ] )
-    else:
-        is_privileged( None )
+        warn_msg( [ "'docker' command not found" ] )
+    elif not is_privileged( None ):
+        how_list.remove( 'docker' )
 if 'spack' in how_list:
     if check_command( 'spack' ):
         spack_path = 'spack'
     elif not check_command( 'git' ):
         spack_path = ''
-        err_msg( [ "'git' command not found (required to install Spack)" ] )
+        warn_msg( [ "'git' command not found (required to install Spack)" ] )
+        how_list.remove( 'spack' )
 if 'github' in how_list or 'git-rccs' in how_list:
     if not check_command( 'git' ):
         err_msg( [ "'git' command not found" ] )
+        if 'github' in ho_list:
+            how_list.remove( 'github' )
+        if 'git-rccs' in ho_list:
+            how_list.remove( 'git-rccs' )
+
+if how_list == []:
+    ERROR = True
 
 ## check Linux distribution and version
 redhat_version = get_redhat_version()
@@ -546,6 +556,82 @@ else:
 arch = cpu_arch()
 if not arch in [ 'x86_64', 'aarch64' ]:
     err_msg( [ arch, 'is not supported by PiP' ] )
+
+def is_ready( how, arch, redhat, pip_ver ):
+    if DRYRUN:
+        return True
+    (deploy, develop) = ready[how,str(arch),redhat,pip_ver]
+    if not ARGS.develop:
+        return deploy
+    return develop
+
+
+if ARGS.ready != '':
+    list_ready = []
+    if ARGS.ready == 'all':
+        for how in [ 'yum', 'docker', 'spack', 'github' ]:
+            if how in [ 'yum', 'docker' ] and SUDO_ERR:
+                continue
+            for cpu in [ 'x86_64', 'aarch64' ]:
+                for linux in [ 7, 8 ]:
+                    for pip in [ 2, 3 ]:
+                        ( usr, dev ) = ready[(how,cpu,linux,pip)]
+                        if not ARGS.develop and usr:
+                            list_ready.append( ( how, cpu, linux, pip ) )
+                        elif ARGS.develop and dev:
+                            list_ready.append( ( how, cpu, linux, pip ) )
+    elif ARGS.ready == 'ALL':
+        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+            if how in [ 'yum', 'docker' ] and SUDO_ERR:
+                continue
+            for cpu in [ 'x86_64', 'aarch64' ]:
+                for linux in [ 7, 8 ]:
+                    for pip in [ 1, 2, 3 ]:
+                        ( usr, dev ) = ready[(how,cpu,linux,pip)]
+                        if not ARGS.develop and usr:
+                            list_ready.append( ( how, cpu, linux, pip ) )
+                        elif ARGS.develop and dev:
+                            list_ready.append( ( how, cpu, linux, pip ) )
+    elif ARGS.ready in [ 'arch', 'cpu' ]:
+        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+            if how in [ 'yum', 'docker' ] and SUDO_ERR:
+                continue
+            for linux in [ 7, 8 ]:
+                for pip in [ 1, 2, 3 ]:
+                    ( usr, dev ) = ready[(how,arch,linux,pip)]
+                    if not ARGS.develop and usr:
+                        list_ready.append( ( how, arch, linux, pip ) )
+                    elif ARGS.develop and dev:
+                        list_ready.append( ( how, arch, linux, pip ) )
+    elif ARGS.ready in [ 'linux', 'redhat', 'centos' ]:
+        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+            if how in [ 'yum', 'docker' ] and SUDO_ERR:
+                continue
+            for arch in [ 'x86_64', 'aarch64' ]:
+                for pip in [ 1, 2, 3 ]:
+                    ( usr, dev ) = ready[(how,arch,redhat_version,pip)]
+                    if not ARGS.develop and usr:
+                        list_ready.append( ( how, arch, redhat_version, pip ) )
+                    elif ARGS.develop and dev:
+                        list_ready.append( ( how, arch, redhat_version, pip ) )
+    else:
+        for how in how_list:
+            if how in [ 'yum', 'docker' ] and SUDO_ERR:
+                continue
+            for pip in pip_vers:
+                ( usr, dev ) = ready[(how,arch,redhat_version,pip)]
+                if not ARGS.develop and usr:
+                    list_ready.append( ( how, arch, redhat_version, pip ) )
+                elif ARGS.develop and dev:
+                    list_ready.append( ( how, arch, redhat_version, pip ) )
+    if list_ready == []:
+        message( [ 'Nothing ready' ] )
+    else:
+        message( [ 'Ready list' ] )
+        for ( how, arch, linux, pip ) in list_ready:
+            msgstr = '{0:>10}\t{1:>10}\tRedHat/CentOS:{2:}    \tPiP-{3:}'.format(how,arch,linux,pip)
+            message( [ msgstr ] )
+    sys.exit( 0 )
 
 def make_directory( path ):
     "make directory"
@@ -780,7 +866,7 @@ def execute( wd, cmd, log_fs, silent=False, env=[] ):
     try:
         if not silent:
             message( [ MSG_PREFIX ] + env + cmd, newline=False, log=log_fs )
-            message( [], newline=True, log=log_fs, logonly=True )
+            message( [], newline=True, log=log_fs, out=None )
         if wd is not None:
             cmd_list = [ 'cd', wd, '&&' ] + cmd
         else:
@@ -1121,10 +1207,11 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
             err_msg( [ 'Unable to find: ', pip_gdb ], log=log_fs )
             return False, retuple
 
-        message( [ MSG_PREFIX1, 'Testing', repo_gdb ], log=log_fs )
-        test_script = os.path.join( gdb_dir, 'test.sh' )
-        if not execute( gdb_dir, [ test_script ], log_fs ):
-            return False, retuple
+        if not ARGS.notest:
+            message( [ MSG_PREFIX1, 'Testing', repo_gdb ], log=log_fs )
+            test_script = os.path.join( gdb_dir, 'test.sh' )
+            if not execute( gdb_dir, [ test_script ], log_fs ):
+                return False, retuple
     if not FLAG_KEEP:
         delete_work_dir( work_dir )
     return True, retuple
@@ -1150,14 +1237,6 @@ if common is work_dir:          # this means work_dir is upper of prefix_dir
 if ERROR:
     NULL_FS.close()
     sys.exit( 1 )
-
-def is_ready( how, arch, redhat, pip_ver ):
-    if DRYRUN:
-        return True
-    (deploy, develop) = ready[how,str(arch),redhat,pip_ver]
-    if not ARGS.develop:
-        return deploy
-    return develop
 
 list_ready     = []
 list_pass0     = []
@@ -1303,7 +1382,7 @@ for ( how, pip_ver ) in list_ready:
             log_fs = open( log_path, mode='w' )
 
         now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
-        message( [ now_str, SEP ], log=log_fs, logonly=True )
+        message( [ now_str, SEP ], log=log_fs, out=None )
 
         if how == 'yum':
             retuple = install_yum(    pip_ver, wdir, log_fs )
@@ -1325,7 +1404,7 @@ for ( how, pip_ver ) in list_ready:
             err_msg( [ how, 'install', obj, 'NG' ], log=log_fs )
 
         now_str = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
-        message( [ SEP, now_str ], log=log_fs, logonly=True )
+        message( [ SEP, now_str ], log=log_fs, out=None )
         if log_fs is not None:
             log_fs.close()
 
@@ -1333,7 +1412,7 @@ for ( how, pip_ver ) in list_ready:
         err_msg( [ e ] )
         message( [ '**** logfile:', log_path ] )
     except KeyboardInterrupt:
-        message( [ '\n^C' ] )
+        message( [ '\n^C' ], out=sys.stderr )
         NULL_FS.close()
         sys.exit( 1 )
 
@@ -1347,7 +1426,7 @@ if not FLAG_KEEP:
     if list_failure == []:
         delete_work_dir( wdir )
     else:
-        message( [ 'the work dir is not deleted due to the error' ] )
+        warn_msg( [ 'the work dir is not deleted due to the error' ] )
 
 ## Summary
 
@@ -1394,15 +1473,16 @@ if list_failure != []:
         else:
             message( [ how, obj, ' **LOG:', log_path ] )
 
-if yum_success or docker_success:
-    message( [ '\nNote' ] )
+if not DRYRUN:
+    if yum_success or docker_success:
+        message( [ '\nNote' ] )
 
-if yum_success:
-    message( [ 'YUM: PiP package is installed at /usr' ] )
+    if yum_success:
+        message( [ 'YUM: PiP package is installed at /usr' ] )
 
-if docker_success:
-    message( [ 'DOCKER: To run the PiP Docker image:' ] )
-    message( [ '\t$ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
+    if docker_success:
+        message( [ 'DOCKER: To run the PiP Docker image:' ] )
+        message( [ '\t$ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
 
 NULL_FS.close()
 if list_failure != []:

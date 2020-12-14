@@ -42,6 +42,11 @@ NG () {
 
 OK ./pip-pip --help
 OK ./pip-pip --dryrun
+OK ./pip-pip --ready
+OK ./pip-pip --ready=all
+OK ./pip-pip --ready=ALL
+OK ./pip-pip --ready=arch
+OK ./pip-pip --ready=linux
 
 OK ./pip-pip --dryrun --how=yum
 OK ./pip-pip --dryrun --how=yum --sudo
