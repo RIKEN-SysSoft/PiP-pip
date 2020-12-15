@@ -1109,7 +1109,7 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
             return False, retuple
         if not execute( glibc_build, [ build_script, glibc_install ], log_fs ):
             return False, retuple
-        piplnlibs = os.path.join( glibc_install, 'bin', 'piplnlibs.sh' )
+        piplnlibs = os.path.join( glibc_install, 'bin', 'piplnlibs' )
         if not check_file( piplnlibs ):
             err_msg( [ 'Unable to find: ', piplnlibs ], log=log_fs )
             return False, retuple
