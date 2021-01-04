@@ -997,6 +997,7 @@ def install_spack( prefix, how, pip_ver, log_fs ):
         spack_path = os.path.join( prefix_dir, bsnam, 'bin', 'spack' )
 
     retuple = ( 'spack', spack_pip, spack_path )
+    execute( None, [ spack_path, 'compiler', 'find' ], log_fs )
     if execute( None, [ spack_path, 'find', spack_pip ], log_fs ):
         message( [ MSG_PREFIX1, 'Uninstalling', spack_pip ], log=log_fs )
         if not execute( None, [ spack_path, 'uninstall', '-y', spack_pip ], log_fs ):
