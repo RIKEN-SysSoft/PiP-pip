@@ -986,7 +986,7 @@ def install_spack( prefix, how, pip_ver, log_fs ):
         ( url, bsnam ) = spack_url()
         spack_dir = os.path.join( prefix_dir, bsnam )
         if os.path.isdir( os.path.join( spack_dir, '.git' ) ):
-            message( [ MSG_PREFIX1, 'Pulling Spack at', prefix_dir ], log=log_fs )
+            message( [ MSG_PREFIX1, 'Pulling Spack into', prefix_dir ], log=log_fs )
             if not execute( spack_dir, [ 'git', 'pull', url ], log_fs ):
                 return False, retuple
         else:
@@ -1479,11 +1479,12 @@ if not DRYRUN:
         message( [ '\nNote' ] )
 
     if yum_success:
-        message( [ 'YUM: PiP package is installed at /usr' ] )
+        message( [ 'YUM: PiP package is installed at /opt/process-in-process/pip-<PIP_VERSION>' ] )
+        message( [ '     PiP-gdb is installed at /usr/bin' ] )
 
     if docker_success:
-        message( [ 'DOCKER: To run the PiP Docker image:' ] )
-        message( [ '\t$ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
+        message( [ 'DOCKER: To run PiP Docker image:' ] )
+        message( [ '    $ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
 
 NULL_FS.close()
 if list_failure != []:

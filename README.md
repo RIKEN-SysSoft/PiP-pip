@@ -32,7 +32,11 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 
 # Usage
 
-    $ ./pip-pip <OPTIONS>
+    $ [<PYTHON>] ./pip-pip <OPTIONS>
+
+`pip-pip` is designed to work and tested on both Python 2.7.5 and
+3.7.4. When `./pip-pip` does not work, try explicitly specifying
+`python[2|3]` when invoking `pip-pip`.
 
 - `--how=<HOW>`
   Specifying how to install PiP. Choice is one of `yum`, `docker`,
