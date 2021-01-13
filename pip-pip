@@ -649,15 +649,22 @@ def make_directory( path ):
 
 def query( prompt, ans ):
     try:
-        while True:
-            choice = input( prompt ).lower()
+        while True:             # python2
+            choice = raw_input( prompt ).lower()
             if choice != '' and choice[0] in ans:
                 return choice[0]
             continue
     except:
-        message( [] )
-        NULL_FS.close()
-        sys.exit( 1 )
+        try:
+            while True:         # python3
+                choice = input( prompt ).lower()
+                if choice != '' and choice[0] in ans:
+                    return choice[0]
+                continue
+        except:
+            message( [] )
+            NULL_FS.close()
+            sys.exit( 1 )
 
 # check and create prefix dir
 def check_prefix( pref ):
