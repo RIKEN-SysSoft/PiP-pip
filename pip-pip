@@ -437,7 +437,7 @@ def check_command( command ):
         return True
 
     try:
-        if sp.check_call( ['sh','-c','which '+command+' >/dev/null 2>&1'] ) == 0:
+        if sp.check_call( ['sh','-c','type '+command+' >/dev/null 2>&1'] ) == 0:
             return True
     except:
         return False
@@ -505,9 +505,9 @@ if 'spack' in how_list:
 if 'github' in how_list or 'git-rccs' in how_list:
     if not check_command( 'git' ):
         err_msg( [ "'git' command not found" ] )
-        if 'github' in ho_list:
+        if 'github' in how_list:
             how_list.remove( 'github' )
-        if 'git-rccs' in ho_list:
+        if 'git-rccs' in how_list:
             how_list.remove( 'git-rccs' )
 
 if how_list == []:
