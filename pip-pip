@@ -428,7 +428,7 @@ else:
     threshold = [ 'PIP_TEST_THRESHOLD='+str(ARGS.threshold) ]
 
 if ARGS.nosubdir:
-    FLAG_SUBIDR = False
+    FLAG_SUBDIR = False
 
 def check_command( command ):
     "check if the Linux command exists"
