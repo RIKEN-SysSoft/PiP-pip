@@ -338,6 +338,13 @@ def is_privileged( log_fs ):
             err_msg(  [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
     return False
 
+with open( '.pip-pip.cmd', mode='w' ) as f:
+    nowstr = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
+    print( '#', nowstr, file=f )
+    for tkn in sys.argv:
+        print( tkn, end='', file=f )
+    print( '', file=f )
+
 cmd = sys.argv[0]
 
 parser = argparse.ArgumentParser( description='pip-pip: Process-in-Process '+
@@ -742,9 +749,9 @@ def delete_work_dir( wdir ):
 
         except:
             if retry == 0:
-                err_msg( [ 'failed' ] )
+                message( [ 'gave up' ] )
                 return False
-            message( [ 'retrying..' ], newline=False )
+            message( [ 'retrying.. ' ], newline=False )
             time.sleep( retry_wait )
             retry_wait *= 2
             retry -= 1
