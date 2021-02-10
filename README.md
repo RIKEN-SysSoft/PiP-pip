@@ -16,7 +16,7 @@ Required software packages:
 
 - **Python** (mandatory, version 2.7.5 or higher)
 - **Git** (mandatory)
-- Yum [optional]
+<!-- - Yum [optional] -->
 - Docker [optional]
 - Spack [optional]
 
@@ -133,6 +133,17 @@ This implies PiP-gdb depends on PiP-glibc.
 
 On CentOS/RedHat 8, PiP will not work at all without having PiP-glibc.
 
+# Mailing Lists
+
+If you have any questions or comments on PiP-pip and/or PiP iteself, 
+send e-mails to;
+
+    procinproc-info+noreply@googlegroups.com
+
+Or, join our PiP users' mailing list;
+
+    procinproc-users+noreply@googlegroups.com
+
 # Author
 
-Atsushi Hori, Riken CCS
+Atsushi Hori, Riken CCS (Japan)
