@@ -340,12 +340,15 @@ def is_privileged( log_fs ):
             err_msg(  [ "'"+user+"'", 'is unable to sudo' ], log=log_fs )
     return False
 
-with open( '.pip-pip.cmd', mode='w' ) as f:
-    nowstr = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
-    print( '#', nowstr, file=f )
-    for tkn in sys.argv:
-        print( tkn, end='', file=f )
-    print( '', file=f )
+try:
+    with open( '.pip-pip.cmd', mode='w' ) as f:
+        nowstr = datetime.datetime.now().strftime( '%Y-%m-%d %H:%M:%S' )
+        print( '#', nowstr, file=f )
+        for tkn in sys.argv:
+            print( tkn, end='', file=f )
+        print( '', file=f )
+except:
+    pass
 
 cmd = sys.argv[0]
 
