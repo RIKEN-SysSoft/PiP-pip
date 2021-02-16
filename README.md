@@ -138,11 +138,11 @@ On CentOS/RedHat 8, PiP will not work at all without having PiP-glibc.
 If you have any questions or comments on PiP-pip and/or PiP iteself, 
 send e-mails to;
 
-    procinproc-info+noreply@googlegroups.com
+    procinproc-info@googlegroups.com
 
 Or, join our PiP users' mailing list;
 
-    procinproc-users+noreply@googlegroups.com
+    procinproc-users@googlegroups.com
 
 # Author
 
