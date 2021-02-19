@@ -86,7 +86,7 @@ def spack_url():
     bsnam = os.path.splitext( os.path.basename( url ) )[0]
     return url, bsnam
 
-# Ready list: (how, arch, redhat, pip )
+# Ready list: (how, arch, centos, pip )
 ready = { ( 'yum',      'x86_64',  7, 1 ): ( True,  True  ),
           ( 'yum',      'x86_64',  7, 2 ): ( False, False ),
           ( 'yum',      'x86_64',  7, 3 ): ( False, False ),
@@ -277,8 +277,8 @@ def git_clone( dir, url, branch, log_fs ):
             return True
     return Flase
 
-def get_redhat_version():
-    "obtain RedHat version"
+def get_centos_version():
+    "obtain RedHat/CentOS version"
     try:
         with open( '/etc/redhat-release', mode='r' ) as f:
             rhel = f.readline().split()
@@ -291,7 +291,7 @@ def get_redhat_version():
                     ver = int( verstr.split( '.' ).pop( 0 ) )
                     return ver
     except Exception:
-        err_msg( [ "Not a RedHat distribution" ] )
+        err_msg( [ "Not a Centos distribution" ] )
         sys.exit( 1 )
 
 def cpu_arch():
@@ -449,7 +449,7 @@ def check_command( command ):
         return True
 
     try:
-        if sp.check_call( ['sh','-c','type '+command+' >/dev/null 2>&1'] ) == 0:
+        if sp.check_call( ['sh','-c','type '+command+' >/dev/null 2>&1' ] ) == 0:
             return True
     except:
         return False
@@ -485,9 +485,9 @@ else:
             errlist.append( h )
     if errlist != []:
         if len(errlist) == 1:
-            err_msg( [ errlist[0], 'is not acceptable value of --how']  )
+            err_msg( [ errlist[0], 'is not acceptable value of --how' ]  )
         else:
-            err_msg( [ ','.join(errlist), 'are not acceptable values of --how']  )
+            err_msg( [ ','.join(errlist), 'are not acceptable values of --how' ]  )
         parser.print_help()
     else:
         for h in how_ALL:
@@ -496,6 +496,9 @@ else:
     if howlist == []:
         ERROR = True
     how_list = howlist
+
+if len( how_list ) > 1 and not FLAG_SUBDIR:
+    err_msg( [ 'Multiple versions cannot be installed without having sub-directoris' ]  )
 
 if 'yum' in how_list:
     if not check_command( 'yum' ):
@@ -526,16 +529,16 @@ if how_list == []:
     ERROR = True
 
 ## check Linux distribution and version
-redhat_version = get_redhat_version()
-if not redhat_version in [ 7, 8 ]:
-    err_msg( [ 'RedHat/CentOS-'+str(redhat_version), 'is not supported' ] )
+centos_version = get_centos_version()
+if not centos_version in [ 7, 8 ]:
+    err_msg( [ 'RedHat/CentOS-'+str(centos_version), 'is not supported' ] )
     sys.exit( 1 )
 
 ## Check PiP version
 version = expand( ARGS.version )
 pip_vers = []
 if 'ALL' in version:
-    if redhat_version == 7:
+    if centos_version == 7:
         pip_vers = [ 1, 2, 3 ]
     else:
         pip_vers = [ 2, 3 ]
@@ -569,10 +572,10 @@ arch = cpu_arch()
 if not arch in [ 'x86_64', 'aarch64' ]:
     err_msg( [ arch, 'is not supported by PiP' ] )
 
-def is_ready( how, arch, redhat, pip_ver ):
+def is_ready( how, arch, centos, pip_ver ):
     if DRYRUN:
         return True
-    (deploy, develop) = ready[how,str(arch),redhat,pip_ver]
+    (deploy, develop) = ready[how,str(arch),centos,pip_ver]
     if not ARGS.develop:
         return deploy
     return develop
@@ -621,21 +624,21 @@ if ARGS.ready != '':
                 continue
             for arch in [ 'x86_64', 'aarch64' ]:
                 for pip in [ 1, 2, 3 ]:
-                    ( usr, dev ) = ready[(how,arch,redhat_version,pip)]
+                    ( usr, dev ) = ready[(how,arch,centos_version,pip)]
                     if not ARGS.develop and usr:
-                        list_ready.append( ( how, arch, redhat_version, pip ) )
+                        list_ready.append( ( how, arch, centos_version, pip ) )
                     elif ARGS.develop and dev:
-                        list_ready.append( ( how, arch, redhat_version, pip ) )
+                        list_ready.append( ( how, arch, centos_version, pip ) )
     else:
         for how in how_list:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for pip in pip_vers:
-                ( usr, dev ) = ready[(how,arch,redhat_version,pip)]
+                ( usr, dev ) = ready[(how,arch,centos_version,pip)]
                 if not ARGS.develop and usr:
-                    list_ready.append( ( how, arch, redhat_version, pip ) )
+                    list_ready.append( ( how, arch, centos_version, pip ) )
                 elif ARGS.develop and dev:
-                    list_ready.append( ( how, arch, redhat_version, pip ) )
+                    list_ready.append( ( how, arch, centos_version, pip ) )
     if list_ready == []:
         message( [ 'Nothing ready' ] )
     else:
@@ -708,7 +711,7 @@ def prefix_path( prefix, how, ver ):
         return prefix
     return os.path.join( prefix,
                          arch + '_' +
-                         'redhat-' + str( redhat_version ) + '_' +
+                         'cetos-' + str( centos_version ) + '_' +
                          how + '_' +
                          'pip-' + str( ver ) )
 
@@ -767,7 +770,7 @@ def work_path( work, how, ver ):
     "create work directory path"
     path = os.path.join( work,
                          arch + '_' +
-                         'redhat-' + str( redhat_version ) + '_' +
+                         'centos-' + str( centos_version ) + '_' +
                          how + '_' +
                          'pip-' + str( ver ) )
     return path
@@ -1095,13 +1098,13 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     repo_test  = concat_urls( git_repo, git_repo_tab[repo]['test']  )
     git_pip = repo_pip + '@' + branch_pip
     retuple = ( 'git', git_pip, '' )
-    if redhat_version == 7:
+    if centos_version == 7:
         ( branch_glibc, branch_gdb ) = gnu_branch_tab[7]
-    elif redhat_version == 8:
+    elif centos_version == 8:
         ( branch_glibc, branch_gdb ) = gnu_branch_tab[8]
     else:
         err_msg( [ 'Unsupported RedHat/CentOS version:',
-                   str( redhat_version ) ],
+                   str( centos_version ) ],
                  log=log_fs )
         return False, retuple
 
@@ -1272,7 +1275,7 @@ if FLAG_NOUPDATE:
 for ver in pip_vers:
     for how in how_list:
         prefdir = prefix_path( prefix_dir, how, ver )
-        if not is_ready( how, arch, redhat_version, ver ) :
+        if not is_ready( how, arch, centos_version, ver ) :
             list_not_ready.append( ( how, ver ) )
         elif is_already_installed( prefdir, how, ver ) and FLAG_NOUPDATE:
             list_noupdate.append( ( how, ver ) )
@@ -1298,7 +1301,7 @@ ERROR = False
 ### NOW we can actually do the installation(s)
 
 message( [] )
-message( [ 'Redhat/Centos:\t\t', redhat_version ] )
+message( [ 'Redhat/Centos:\t\t', centos_version ] )
 message( [ 'CPU Architecture:\t', arch ])
 
 if list_ready != []:
@@ -1387,8 +1390,8 @@ list_skipped  = []
 for ( how, pip_ver ) in list_ready:
     ERROR = False
     message( [] )
-    if not is_ready( how, arch, redhat_version, pip_ver ):
-        list_skipped.append( ( how, arch, redhat_version, pip_ver ) )
+    if not is_ready( how, arch, centos_version, pip_ver ):
+        list_skipped.append( ( how, arch, centos_version, pip_ver ) )
         continue
 
     ( wdir, log_path ) = create_work( work_path( work_dir, how, pip_ver ) )
@@ -1470,19 +1473,19 @@ if list_success != []:
             docker_success = True
 
 if list_skipped != []:
-    for ( how, arch, redhat, pip_ver ) in list_skipped:
+    for ( how, arch, centos, pip_ver ) in list_skipped:
         message( [ 'SKIPPED\t',
                    how,
                    arch,
-                   'redhat'+str(redhat),
+                   'centos'+str(centos),
                    'PiP-v'+str(pip_ver) ] )
 
 if list_noupdate != []:
-    for ( how, arch, redhat, pip_ver ) in list_skipped:
+    for ( how, arch, centos, pip_ver ) in list_skipped:
         message( [ 'NOUPDATE\t',
                    how,
                    arch,
-                   'redhat'+str(redhat),
+                   'centos'+str(centos),
                    'PiP-v'+str(pip_ver) ] )
 
 if list_failure != []:
