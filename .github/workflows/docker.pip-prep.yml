@@ -1,0 +1,49 @@
+name: Docker image pip-prep
+
+on:
+  push:
+    paths:
+    - 'package/docker/pip-prep/**'
+
+  repository_dispatch:
+
+  workflow_dispatch:
+
+jobs:
+
+  build:
+
+    strategy:
+      matrix:
+        distro:
+          - centos7
+          - centos8
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: checkout
+        uses: actions/checkout@v2
+
+      - name: Setup QEMU user-mode emulation
+        uses: docker/setup-qemu-action@v1
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          file: package/docker/pip-prep/${{ matrix.distro }}/Dockerfile
+          tags: ${{ secrets.DOCKERHUB_USER }}/pip-prep:${{ matrix.distro }}
+          push: true
+
