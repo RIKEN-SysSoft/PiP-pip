@@ -1,6 +1,8 @@
 #!/bin/sh
 
-pip_pip=../pip-pip
+currdir=`dirname $0`
+
+pip_pip=$currdir/../pip-pip
 
 if [ -f test.log ]; then
     mv -f test.log test.log.bak > /dev/null 2>&1
@@ -75,7 +77,6 @@ OK --dryrun --how=github   --version=3   --sudo
 OK --dryrun --how=docker --prefix=INSTALL --sudo
 OK --dryrun --how=spack  --prefix=INSTALL
 OK --dryrun --how=github --prefix=INSTALL
-OK --dryrun --how=github --prefix=INSTALL//
 
 #OK --dryrun --how=yum    --work=WORK --sudo
 OK --dryrun --how=docker --work=WORK --sudo
@@ -86,6 +87,14 @@ OK --dryrun --how=github --work=WORK
 OK --dryrun --how=docker --sudo --notest
 OK --dryrun --how=spack  --notest
 OK --dryrun --how=github --notest
+
+OK --dryrun --how=docker --sudo --nosubdir
+OK --dryrun --how=spack  --nosubdir
+OK --dryrun --how=github --nosubdir
+
+OK --dryrun --how=docker --sudo --noupdate
+OK --dryrun --how=spack  --noupdate
+OK --dryrun --how=github --noupdate
 
 OK --dryrun --how=docker --sudo --centos=7
 OK --dryrun --how=docker --sudo --centos=8

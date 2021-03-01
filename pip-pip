@@ -30,7 +30,7 @@
 # $PIP_PIP: Version 1.0.0$
 #
 # $Author: Atsushi Hori (R-CCS)
-# Query:   procinproc-info+noreply@googlegroups.com
+# Query:   procinproc-info@googlegroups.com
 # User ML: procinproc-users@googlegroups.com
 # $
 
@@ -45,6 +45,9 @@ import os
 import sys
 import subprocess as sp
 import re
+
+arch_supported = [ 'x86_64', 'aarch64' ]
+how_supported  = [ 'docker', 'spack', 'github', 'yum' ]
 
 git_url_tab   = { 'github'   : 'https://github.com/RIKEN-SysSoft' }
 
@@ -302,21 +305,21 @@ parser.add_argument( '--centos', '-c',
                      action  = 'append' )
 parser.add_argument( '--prefix', '-p',
                      help    = "install (prefix) directory " \
-                        "([spack,] github, default 'install')",
+                        "(github [, spack]. default './install')",
                      type    = str,
                      default = 'install',
                      nargs   = '?' )
 parser.add_argument( '--work', '-w',
-                     help    = "working directory (default 'work')",
+                     help    = "working directory (default './work')",
                      type    = str,
                      default = 'work',
                      nargs   = '?' )
 parser.add_argument( '--keep', '-k',
                      help    = 'keep working directory. ' +
-                     'Work is deleted when succeeded by default',
+                     'Work directory(ies) is (are) deleted when succeeded by default',
                      action  = 'store_true' )
 parser.add_argument( '--sudo', '-s',
-                     help    = 'allow sudo (yum, docker)',
+                     help    = 'allow sudo (docker)',
                      action  = 'store_true' )
 parser.add_argument( '--yes', '-y',
                      help    = "answer 'yes' to all questions",
@@ -397,7 +400,7 @@ def expand( lst, lower=False ):
 
 ## check how
 how_list = expand( ARGS.how, lower=True )
-how_all = [ 'yum', 'docker', 'spack', 'github' ]
+how_all = [ 'docker', 'spack', 'github' ]
 
 os_list = expand( ARGS.centos )
 if os_list == []:
@@ -416,9 +419,9 @@ else:
             errlist.append( h )
     if errlist != []:
         if len(errlist) == 1:
-            err_msg( [ errlist[0], 'is not acceptable value of --how' ]  )
+            err_msg( [ errlist[0], 'is not supported value of --how' ]  )
         else:
-            err_msg( [ ','.join(errlist), 'are not acceptable values of --how' ]  )
+            err_msg( [ ','.join(errlist), 'are not supported values of --how' ]  )
         parser.print_help()
     else:
         for h in how_all:
@@ -490,12 +493,12 @@ elif version == []:
     pip_vers = [ 2 ]
 else:
     version = sorted( set( version ) )
-    ver_acceptable = [ -1, 2, 3 ]
+    ver_supported = [ -1, 2, 3 ]
     errlist = []
     for ver_str in version:
         try:
             ver = int( ver_str )
-            if ver in ver_acceptable:
+            if ver in ver_supported:
                 pip_vers.append( abs( ver ) )
             else:
                 errlist.append( ver_str )
@@ -504,14 +507,14 @@ else:
     errlen = len( errlist )
     if errlen > 0:
         if errlen == 1:
-            err_msg( [ errlist[0], 'is not an acceptable value of --version' ] )
+            err_msg( [ errlist[0], 'is not an supported value of --version' ] )
         else:
             err_msg( [ ','.join(errlist),
-                       'are not acceptable values of --version' ] )
+                       'are not supported values of --version' ] )
 
 # check arch
 arch = cpu_arch()
-if not arch in [ 'x86_64', 'aarch64' ]:
+if not arch in arch_supported:
     err_msg( [ arch, 'is not supported by PiP' ] )
 
 def is_ready( how, arch, centos, pip_ver ):
@@ -522,25 +525,25 @@ def is_ready( how, arch, centos, pip_ver ):
 if ARGS.ready != '':
     list_ready = []
     if ARGS.ready == 'all':
-        for how in [ 'yum', 'docker', 'spack', 'github' ]:
+        for how in how_supported:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
-            for cpu in [ 'x86_64', 'aarch64' ]:
+            for cpu in arch_supported:
                 for linux in [ 7, 8 ]:
                     for pip in [ 2, 3 ]:
                         if is_ready( how, cpu, linux, pip ):
                             list_ready.append( ( how, cpu, linux, pip ) )
     elif ARGS.ready == 'ALL':
-        for how in [ 'yum', 'docker', 'spack', 'github' ]:
+        for how in how_supported:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
-            for cpu in [ 'x86_64', 'aarch64' ]:
+            for cpu in arch_supported:
                 for linux in [ 7, 8 ]:
                     for pip in [ 1, 2, 3 ]:
                         if is_ready( how, cpu, linux, pip ):
                             list_ready.append( ( how, cpu, linux, pip ) )
     elif ARGS.ready in [ 'arch', 'cpu' ]:
-        for how in [ 'yum', 'docker', 'spack', 'github' ]:
+        for how in how_supported:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for linux in [ 7, 8 ]:
@@ -548,10 +551,10 @@ if ARGS.ready != '':
                     if is_ready( how, arch, linux, pip ):
                         list_ready.append( ( how, arch, linux, pip ) )
     elif ARGS.ready in [ 'linux', 'redhat', 'centos' ]:
-        for how in [ 'yum', 'docker', 'spack', 'github' ]:
+        for how in how_supported:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
-            for arch in [ 'x86_64', 'aarch64' ]:
+            for arch in arch_supported:
                 for pip in [ 1, 2, 3 ]:
                     if is_ready( how, arch, centos_version, pip ):
                         list_ready.append( ( how, arch, centos_version, pip ) )
@@ -1204,6 +1207,8 @@ for ver in pip_vers:
         else:
             list_install.append( ( how, ver, centos_version ) )
 
+# check if the specified installatios are ready or not
+
 for install in list_install:
     ( how, ver, centos ) = install
     if how is 'docker':
@@ -1221,15 +1226,20 @@ for install in list_install:
             list_noupdate.append( ( how, ver, centos_version ) )
         else:
             list_pass0.append( ( how, ver, centos_version ) )
-list_del_work = []
 
-# check work dir, delete if exists
+# check the prefix (install) directories
+
 for ( how, ver, centos ) in list_pass0:
     if check_prefix( prefix_path( prefix_dir, how, ver ) ):
         list_pass1.append( ( how, ver, centos ) )
     else:
         list_skipped.append( ( how, ver, centos ) )
+
+# check work dir, delete if exists
+
+list_del_work = []
 for ( how, ver, centos ) in list_pass1:
+    # list_del_work may be updated in check_work()
     if check_work( work_path( work_dir, how, ver ) ):
         list_ready.append( ( how, ver, centos ) )
     else:

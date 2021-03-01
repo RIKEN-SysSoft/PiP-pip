@@ -115,7 +115,7 @@ combinations of the two options. `pip-pip` will create subdirectories
 right under the install directory (`--prefix`) named in the
 
     <ARCH>-<LINUX>-<HOW>-<PIP-VERSION>
-    e.g) x86_64_redhat-7_spack_pip-3, aarch64_redhat-8_github_pip-2, ..
+    e.g) x86_64_centos-7_spack_pip-3, aarch64_centos-8_github_pip-2, ..
 
 style and each installation of the combinations will be installed in
 one of those subdirectries. The `--nosubdir` option supresses this
