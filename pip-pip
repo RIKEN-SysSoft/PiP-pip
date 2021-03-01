@@ -31,7 +31,7 @@
 #
 # $Author: Atsushi Hori (R-CCS)
 # Query:   procinproc-info+noreply@googlegroups.com
-# User ML: procinproc-users+noreply@googlegroups.com
+# User ML: procinproc-users@googlegroups.com
 # $
 
 "PiP-pip: PiP (Process-in-Process) package installation program"
@@ -46,31 +46,40 @@ import sys
 import subprocess as sp
 import re
 
-git_url_tab   = { 'github'   : 'https://github.com/RIKEN-SysSoft',
-                  'git-rccs' : 'git@git.sys.r-ccs.riken.jp:software' }
+git_url_tab   = { 'github'   : 'https://github.com/RIKEN-SysSoft' }
 
 git_repo_tab  = { 'github'   : { 'glibc': 'PiP-glibc.git',
                                  'pip'  : 'PiP.git',
                                  'gdb'  : 'PiP-gdb.git',
-                                 'test' : 'PiP-Testsuite.git' },
-                  'git-rccs' : { 'glibc': 'PIP-glibc.git',
-                                 'pip'  : 'PIP.git',
-                                 'gdb'  : 'PIP-gdb.git',
-                                 'test' : 'PIP-Testsuite.git' } }
+                                 'test' : 'PiP-Testsuite.git' } }
 
 gnu_branch_tab = { 7 : ( 'centos/glibc-2.17-260.el7.pip.branch',
                          'centos/gdb-7.6.1-94.el7.pip.branch' ),
                    8 : ( 'centos/glibc-2.28-72.el8_1.1.pip.branch',
                          'centos/gdb-8.2-12.el8.pip.branch' ) }
 
-def resource_id( how, pip_ver ):
-    if how == 'yum':
-        return 'process-in-process-v' + str( pip_ver )
-    elif how == 'docker':
-        return 'rikenpip/pip-v' + str( pip_ver )
-    elif how == 'spack':
-        return 'process-in-process@' + str( pip_ver )
-    else:
+docker_tagtab = { ( 'x86_64',  7, 2 ) : 'process-in-process/pip:2-centos7-amd64',
+                  ( 'aarch64', 7, 2 ) : 'process-in-process/pip:2-centos7-arm64v8',
+                  ( 'x86_64',  8, 2 ) : 'process-in-process/pip:2-centos8-amd64',
+                  ( 'aarch64', 8, 2 ) : 'process-in-process/pip:2-centos8-arm64v8',
+                  ( 'x86_64',  7, 3 ) : 'process-in-process/pip:3-centos7-amd64',
+                  ( 'aarch64', 7, 3 ) : 'process-in-process/pip:3-centos7-arm64v8',
+                  ( 'x86_64',  8, 3 ) : 'process-in-process/pip:3-centos8-amd64' ,
+                  ( 'aarch64', 8, 3 ) : 'process-in-process/pip:3-centos8-arm64v8' }
+
+def resource_id( how, centos, pip_ver ):
+    global ARGS, arch
+
+    try:
+        if how == 'yum':
+            return 'process-in-process-v' + str( pip_ver )
+        elif how == 'docker':
+            return docker_tagtab[ arch, int(centos), pip_ver ]
+        elif how == 'spack':
+            return 'process-in-process@' + str( pip_ver )
+        else:
+            return None
+    except:
         return None
 
 def spack_url():
@@ -87,70 +96,31 @@ def spack_url():
     return url, bsnam
 
 # Ready list: (how, arch, centos, pip )
-ready = { ( 'yum',      'x86_64',  7, 1 ): ( True,  True  ),
-          ( 'yum',      'x86_64',  7, 2 ): ( False, False ),
-          ( 'yum',      'x86_64',  7, 3 ): ( False, False ),
-          ( 'yum',      'x86_64',  8, 1 ): ( False, False ),
-          ( 'yum',      'x86_64',  8, 2 ): ( False, False ),
-          ( 'yum',      'x86_64',  8, 3 ): ( False, False ),
-          ( 'yum',      'aarch64', 7, 1 ): ( False, False ),
-          ( 'yum',      'aarch64', 7, 2 ): ( False, False ),
-          ( 'yum',      'aarch64', 7, 3 ): ( False, False ),
-          ( 'yum',      'aarch64', 8, 1 ): ( False, False ),
-          ( 'yum',      'aarch64', 8, 2 ): ( False, False ),
-          ( 'yum',      'aarch64', 8, 3 ): ( False, False ),
+not_ready = { 'yum' :   [ ( 'x86_64',  7, 1 ),
+                          ( 'x86_64',  7, 2 ),
+                          ( 'x86_64',  7, 3 ),
+                          ( 'x86_64',  8, 1 ),
+                          ( 'x86_64',  8, 2 ),
+                          ( 'x86_64',  8, 3 ),
+                          ( 'aarch64', 7, 1 ),
+                          ( 'aarch64', 7, 2 ),
+                          ( 'aarch64', 7, 3 ),
+                          ( 'aarch64', 8, 1 ),
+                          ( 'aarch64', 8, 2 ),
+                          ( 'aarch64', 8, 3 ) ],
 
-          ( 'docker',   'x86_64',  7, 1 ): ( True,  True  ),
-          ( 'docker',   'x86_64',  7, 2 ): ( False, False ),
-          ( 'docker',   'x86_64',  7, 3 ): ( False, False ),
-          ( 'docker',   'x86_64',  8, 1 ): ( False, False ),
-          ( 'docker',   'x86_64',  8, 2 ): ( False, False ),
-          ( 'docker',   'x86_64',  8, 3 ): ( False, False ),
-          ( 'docker',   'aarch64', 7, 1 ): ( False, False ),
-          ( 'docker',   'aarch64', 7, 2 ): ( False, False ),
-          ( 'docker',   'aarch64', 7, 3 ): ( False, False ),
-          ( 'docker',   'aarch64', 8, 1 ): ( False, False ),
-          ( 'docker',   'aarch64', 8, 2 ): ( False, False ),
-          ( 'docker',   'aarch64', 8, 3 ): ( False, False ),
+              'docker' : [ ( 'x86_64',  7, 1 ),
+                           ( 'x86_64',  8, 1 ),
+                           ( 'aarch64', 7, 1 ),
+                           ( 'aarch64', 8, 1 ) ],
 
-          ( 'spack',    'x86_64',  7, 1 ): ( False, False ),
-          ( 'spack',    'x86_64',  7, 2 ): ( False, True  ),
-          ( 'spack',    'x86_64',  7, 3 ): ( False, True  ),
-          ( 'spack',    'x86_64',  8, 1 ): ( False, False ),
-          ( 'spack',    'x86_64',  8, 2 ): ( False, True  ),
-          ( 'spack',    'x86_64',  8, 3 ): ( False, True  ),
-          ( 'spack',    'aarch64', 7, 1 ): ( False, False ),
-          ( 'spack',    'aarch64', 7, 2 ): ( False, True  ),
-          ( 'spack',    'aarch64', 7, 3 ): ( False, True  ),
-          ( 'spack',    'aarch64', 8, 1 ): ( False, False ),
-          ( 'spack',    'aarch64', 8, 2 ): ( False, True  ),
-          ( 'spack',    'aarch64', 8, 3 ): ( False, True  ),
+              'spack' :  [ ( 'x86_64',  7, 1 ),
+                           ( 'x86_64',  8, 1 ),
+                           ( 'aarch64', 7, 1 ),
+                           ( 'aarch64', 8, 1 ) ],
 
-          ( 'github',   'x86_64',  7, 1 ): ( True,  True  ),
-          ( 'github',   'x86_64',  7, 2 ): ( True,  True  ),
-          ( 'github',   'x86_64',  7, 3 ): ( True,  True  ),
-          ( 'github',   'x86_64',  8, 1 ): ( False, False ),
-          ( 'github',   'x86_64',  8, 2 ): ( True,  True  ),
-          ( 'github',   'x86_64',  8, 3 ): ( True,  True  ),
-          ( 'github',   'aarch64', 7, 1 ): ( True,  True  ),
-          ( 'github',   'aarch64', 7, 2 ): ( True,  True  ),
-          ( 'github',   'aarch64', 7, 3 ): ( True,  True  ),
-          ( 'github',   'aarch64', 8, 1 ): ( False, False ),
-          ( 'github',   'aarch64', 8, 2 ): ( True,  True  ),
-          ( 'github',   'aarch64', 8, 3 ): ( True,  True  ),
-
-          ( 'git-rccs', 'x86_64',  7, 1 ): ( True,  True  ),
-          ( 'git-rccs', 'x86_64',  7, 2 ): ( True,  True  ),
-          ( 'git-rccs', 'x86_64',  7, 3 ): ( True,  True  ),
-          ( 'git-rccs', 'x86_64',  8, 1 ): ( False, False ),
-          ( 'git-rccs', 'x86_64',  8, 2 ): ( True,  True  ),
-          ( 'git-rccs', 'x86_64',  8, 3 ): ( True,  True  ),
-          ( 'git-rccs', 'aarch64', 7, 1 ): ( True,  True  ),
-          ( 'git-rccs', 'aarch64', 7, 2 ): ( True,  True  ),
-          ( 'git-rccs', 'aarch64', 7, 3 ): ( True,  True  ),
-          ( 'git-rccs', 'aarch64', 8, 1 ): ( False, False ),
-          ( 'git-rccs', 'aarch64', 8, 2 ): ( True,  True  ),
-          ( 'git-rccs', 'aarch64', 8, 3 ): ( True,  True  )
+              'github':  [ ( 'x86_64',  8, 1 ),
+                           ( 'aarch64', 8, 1 ) ]
 }
 
 MSG_ENTER   = '>>>'
@@ -230,52 +200,13 @@ def concat_urls( url0, url1 ):
 NULL_FS = open( os.devnull, 'w' )
 
 def git_clone( dir, url, branch, log_fs ):
-    global ARGS
-    git_rccs = 'git@git.sys.r-ccs.riken.jp:software'
     if branch != '':
         if execute( dir, [ 'git', 'clone', '-b', branch, url ], log_fs ):
             return True
     else:
         if execute( dir, [ 'git', 'clone', url ], log_fs ):
             return True
-    # get from gitweb
-    error = False
-    if url[0:len(git_rccs)] != git_rccs:
-        return False
-    user = ARGS.user
-    if user == '' or not ARGS.develop:
-        err_msg( [ "User must be given" ] )
-        return False
-    repo_name = os.path.basename( url )
-    if branch != '':
-        url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
-                     repo_name + ';a=snapshot;h=refs/heads/' + \
-                     branch + ';sf=tgz'
-    else:
-        url_gitweb = 'https://git.sys.r-ccs.riken.jp/git/new/?p=software/' + \
-                     repo_name + ';a=snapshot;h=refs/heads/master;sf=tgz'
-    if user == 'netrc':
-        if not execute( dir, [ 'curl', '-n', '-o', repo_name+'.tgz', 
-                               '"'+url_gitweb+'"' ], 
-                        log_fs ):
-            return False
-    else:
-        if not execute( dir, [ 'curl', '-u', user, '-n', '-o', repo_name+'.tgz', 
-                               '"'+url_gitweb+'"' ], 
-                        log_fs ):
-            return False
-    execute( dir, [ 'rm', '-f', '-r', repo_name ], log_fs )
-    if not execute( dir, [ 'tar', 'xzf', repo_name+'.tgz' ], log_fs ):
-        return False
-    execute( dir, [ 'rm', '-f', repo_name+'.tgz' ], log_fs )
-    repo_wo_git = os.path.splitext( repo_name )[0]
-    gitweb_name = repo_wo_git + '-' + branch.replace('/','.')
-    for dent in os.listdir( dir ):
-        if dent[0:len(gitweb_name)] == gitweb_name:
-            if not execute( dir, [ 'mv', '-f', dent, repo_wo_git ], log_fs ):
-                return False
-            return True
-    return Flase
+    return False
 
 def get_centos_version():
     "obtain RedHat/CentOS version"
@@ -291,7 +222,7 @@ def get_centos_version():
                     ver = int( verstr.split( '.' ).pop( 0 ) )
                     return ver
     except Exception:
-        err_msg( [ "Not a Centos distribution" ] )
+        err_msg( [ "Not a CentOS distribution" ] )
         sys.exit( 1 )
 
 def cpu_arch():
@@ -365,6 +296,10 @@ parser.add_argument( '--version', '-v',
                      help    = "specifying PiP version (2 or 3. default '2')",
                      type    = str,
                      action  = 'append' )
+parser.add_argument( '--centos', '-c',
+                     help    = "Docker only: specifying RedHat/CentOS version (7 or 8. default 8)",
+                     type    = str,
+                     action  = 'append' )
 parser.add_argument( '--prefix', '-p',
                      help    = "install (prefix) directory " \
                         "([spack,] github, default 'install')",
@@ -396,20 +331,19 @@ parser.add_argument( '--nogdb',
                      help    = 'do not build PiP-gdb (github)',
                      action  = 'store_true' )
 parser.add_argument( '--notest',
-                     help    = 'Not testing installed PiP (and PiP-gdb)',
+                     help    = 'do not test installed PiP (and PiP-gdb)',
                      action  = 'store_true' )
 parser.add_argument( '--noupdate',
-                     help    = 'Do not update if specified PiP installation exists',
+                     help    = 'do not update if specified PiP installation exists',
                      action  = 'store_true' )
 parser.add_argument( '--nosubdir',
-                     help    = 'Do not create subdirectory(ies) in the prefix directory',
+                     help    = 'do not create subdirectory(ies) in the prefix directory',
                      action  = 'store_true' )
 parser.add_argument( '--threshold', '-t',
+                     help    = 'threshold of the number of PiP Testsuite errors',
                      type    = int,
                      nargs   = '?',
-                     default = 10,
-                     help     = 'The threshold of the number of PiP testsuite ' \
-                     'errors (default 10)' )
+                     default = 10 )
 parser.add_argument( '--ready', '-r',
                      help    = "list ready to install and exit",
                      type    = str,
@@ -418,14 +352,6 @@ parser.add_argument( '--ready', '-r',
 parser.add_argument( '--dryrun', '--dry', '-d',
                      help    = 'dry run',
                      action  = 'store_true' )
-parser.add_argument( '--develop', '--dev',
-                     help=argparse.SUPPRESS,
-                     action  = 'store_true' )
-parser.add_argument( '--user',
-                     help=argparse.SUPPRESS,
-                     type    = str,
-                     nargs   = '?',
-                     default = '' )
 ARGS = parser.parse_args()
 
 DRYRUN        = ARGS.dryrun
@@ -455,11 +381,14 @@ def check_command( command ):
         return False
     return False
 
-def expand( lst ):
+def expand( lst, lower=False ):
     "flatten list"
     if lst == [] or lst is None:
         return []
-    token = lst.pop( 0 )
+    if lower:
+        token = lst.pop( 0 ).lower()
+    else:
+        token = lst.pop( 0 )
     if ',' in token:
         return token.split( ',' ) + expand( lst )
     if '+' in token:
@@ -467,21 +396,23 @@ def expand( lst ):
     return [ token ] + expand( lst )
 
 ## check how
-how_list = expand( ARGS.how )
+how_list = expand( ARGS.how, lower=True )
 how_all = [ 'yum', 'docker', 'spack', 'github' ]
-how_ALL = how_all + [ 'git-rccs' ]
 
-if 'all' in how_list:
+os_list = expand( ARGS.centos )
+if os_list == []:
+    os_list = [ '8' ]
+centos_list = []
+
+if 'all' in how_list or 'All' in how_list:
     how_list = how_all
-elif 'ALL' in how_list:
-    how_list = how_ALL
 elif how_list == []:
     how_list = [ 'github' ]
 else:
     errlist = []
     howlist = []
     for h in how_list:
-        if not h in how_ALL:
+        if not h in how_all:
             errlist.append( h )
     if errlist != []:
         if len(errlist) == 1:
@@ -490,7 +421,7 @@ else:
             err_msg( [ ','.join(errlist), 'are not acceptable values of --how' ]  )
         parser.print_help()
     else:
-        for h in how_ALL:
+        for h in how_all:
             if h in how_list:
                 howlist.append( h )
     if howlist == []:
@@ -502,28 +433,39 @@ if len( how_list ) > 1 and not FLAG_SUBDIR:
 
 if 'yum' in how_list:
     if not check_command( 'yum' ):
-        warn_msg( [ "'yum' command not found" ] )
+        warn_msg( [ "'yum' command not found -- yum installation skipped" ] )
+        how_list.remove( 'yum' )
     elif not is_privileged( None ):
         how_list.remove( 'yum' )
 if 'docker' in how_list:
     if not check_command( 'docker' ):
-        warn_msg( [ "'docker' command not found" ] )
+        warn_msg( [ "'docker' command not found -- docker installation skipped" ] )
+        how_list.remove( 'docker' )
     elif not is_privileged( None ):
         how_list.remove( 'docker' )
+    elif 'all' in os_list or 'ALL' in os_list:
+        centos_list = [ '7', '8' ]
+    else:
+        for centos in os_list:
+            if not centos in [ '7', '8' ]:
+                warn_msg( [ "Unsupported CentOS version (" + centos + ")" ] )
+            elif not centos in centos_list:
+                centos_list.append( centos )
+        if centos_list is []:
+            warn_msg( [ "Docker installation skipped" ] )
+            how_list.remove( 'docker' )
 if 'spack' in how_list:
     if check_command( 'spack' ):
         spack_path = 'spack'
     elif not check_command( 'git' ):
         spack_path = ''
-        warn_msg( [ "'git' command not found (required to install Spack)" ] )
+        warn_msg( [ "'spack' and 'git' commands not found -- spack installation skipped" ] )
         how_list.remove( 'spack' )
-if 'github' in how_list or 'git-rccs' in how_list:
+if 'github' in how_list:
     if not check_command( 'git' ):
-        err_msg( [ "'git' command not found" ] )
+        err_msg( [ "'git' command not found -- git installation skipped" ] )
         if 'github' in how_list:
             how_list.remove( 'github' )
-        if 'git-rccs' in how_list:
-            how_list.remove( 'git-rccs' )
 
 if how_list == []:
     ERROR = True
@@ -573,13 +515,9 @@ if not arch in [ 'x86_64', 'aarch64' ]:
     err_msg( [ arch, 'is not supported by PiP' ] )
 
 def is_ready( how, arch, centos, pip_ver ):
-    if DRYRUN:
-        return True
-    (deploy, develop) = ready[how,str(arch),centos,pip_ver]
-    if not ARGS.develop:
-        return deploy
-    return develop
-
+    if ( arch, centos, pip_ver ) in not_ready[how]:
+        return False
+    return True
 
 if ARGS.ready != '':
     list_ready = []
@@ -590,54 +528,39 @@ if ARGS.ready != '':
             for cpu in [ 'x86_64', 'aarch64' ]:
                 for linux in [ 7, 8 ]:
                     for pip in [ 2, 3 ]:
-                        ( usr, dev ) = ready[(how,cpu,linux,pip)]
-                        if not ARGS.develop and usr:
-                            list_ready.append( ( how, cpu, linux, pip ) )
-                        elif ARGS.develop and dev:
+                        if is_ready( how, cpu, linux, pip ):
                             list_ready.append( ( how, cpu, linux, pip ) )
     elif ARGS.ready == 'ALL':
-        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+        for how in [ 'yum', 'docker', 'spack', 'github' ]:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for cpu in [ 'x86_64', 'aarch64' ]:
                 for linux in [ 7, 8 ]:
                     for pip in [ 1, 2, 3 ]:
-                        ( usr, dev ) = ready[(how,cpu,linux,pip)]
-                        if not ARGS.develop and usr:
-                            list_ready.append( ( how, cpu, linux, pip ) )
-                        elif ARGS.develop and dev:
+                        if is_ready( how, cpu, linux, pip ):
                             list_ready.append( ( how, cpu, linux, pip ) )
     elif ARGS.ready in [ 'arch', 'cpu' ]:
-        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+        for how in [ 'yum', 'docker', 'spack', 'github' ]:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for linux in [ 7, 8 ]:
                 for pip in [ 1, 2, 3 ]:
-                    ( usr, dev ) = ready[(how,arch,linux,pip)]
-                    if not ARGS.develop and usr:
-                        list_ready.append( ( how, arch, linux, pip ) )
-                    elif ARGS.develop and dev:
+                    if is_ready( how, arch, linux, pip ):
                         list_ready.append( ( how, arch, linux, pip ) )
     elif ARGS.ready in [ 'linux', 'redhat', 'centos' ]:
-        for how in [ 'yum', 'docker', 'spack', 'github', 'git-rccs' ]:
+        for how in [ 'yum', 'docker', 'spack', 'github' ]:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for arch in [ 'x86_64', 'aarch64' ]:
                 for pip in [ 1, 2, 3 ]:
-                    ( usr, dev ) = ready[(how,arch,centos_version,pip)]
-                    if not ARGS.develop and usr:
-                        list_ready.append( ( how, arch, centos_version, pip ) )
-                    elif ARGS.develop and dev:
+                    if is_ready( how, arch, centos_version, pip ):
                         list_ready.append( ( how, arch, centos_version, pip ) )
     else:
         for how in how_list:
             if how in [ 'yum', 'docker' ] and SUDO_ERR:
                 continue
             for pip in pip_vers:
-                ( usr, dev ) = ready[(how,arch,centos_version,pip)]
-                if not ARGS.develop and usr:
-                    list_ready.append( ( how, arch, centos_version, pip ) )
-                elif ARGS.develop and dev:
+                if is_ready( how, arch, centos_version, pip ):
                     list_ready.append( ( how, arch, centos_version, pip ) )
     if list_ready == []:
         message( [ 'Nothing ready' ] )
@@ -915,24 +838,24 @@ def execute( wd, cmd, log_fs, silent=False, env=[] ):
         err_msg( [ '\nException:', e ], log=log_fs )
         return False
 
-def is_already_installed( prefix, how, pip_ver ):
+def is_already_installed( prefix, how, pip_ver, centos ):
     global spack_path
 
     if DRYRUN:
         return False
 
     if how == 'yum':
-        yum_pip = resource_id( how, pip_ver )
+        yum_pip = resource_id( how, centos, pip_ver )
         if execute( None, [ 'yum', 'list', 'installed', yum_pip ], NULL_FS, True ):
             return True
     elif how == 'docker':
-        docker_pip = resource_id( how, pip_ver )
+        docker_pip = resource_id( how, centos, pip_ver )
         if execute( None,
                     sudo_cmd + [ 'docker', 'inspect', docker_pip ],
                     NULL_FS, True ):
             return True;
     elif how == 'spack' and spack_path is not None:
-        spack_pip = resource_id( how, pip_ver )
+        spack_pip = resource_id( how, centos, pip_ver )
         if execute( None, [ spack_path, 'find', spack_pip ], NULL_FS, True ):
             return True;
     else: # GIT
@@ -944,7 +867,7 @@ def is_already_installed( prefix, how, pip_ver ):
 def install_yum( pip_ver, work_dir, log_fs ):
     global threshold
     "yum install"
-    yum_pip = resource_id( 'yum', pip_ver )
+    yum_pip = resource_id( 'yum', centos_version, pip_ver )
     message( [ MSG_ENTER, 'Yum install', yum_pip ], log=log_fs )
     retuple = ( 'yum', yum_pip, '' )
     if not execute( None,
@@ -969,9 +892,11 @@ def install_yum( pip_ver, work_dir, log_fs ):
             return False, retuple
     return True, retuple
 
-def install_docker( pip_ver, log_fs ):
+list_docker_images = []
+
+def install_docker( pip_ver, centos, log_fs ):
     "docker install"
-    docker_pip = resource_id( 'docker', pip_ver )
+    docker_pip = resource_id( 'docker', centos, pip_ver )
     message( [ MSG_ENTER, 'Docker install', docker_pip ], log=log_fs )
     retuple = ( 'docker', docker_pip, '' )
     if execute( None,
@@ -988,13 +913,14 @@ def install_docker( pip_ver, log_fs ):
     message( [ MSG_PREFIX1, 'Pulling existing image', docker_pip ], log=log_fs )
     if not execute( None, sudo_cmd + [ 'docker', 'pull', docker_pip ], log_fs ):
         return False, retuple
+    list_docker_images.append( docker_pip )
     return True, retuple
 
 def install_spack( prefix, how, pip_ver, log_fs ):
     "Spack install"
     global spack_path
 
-    spack_pip = resource_id( 'spack', pip_ver )
+    spack_pip = resource_id( 'spack', centos_version, pip_ver )
     message( [ MSG_ENTER, 'Spack install', spack_pip ], log=log_fs )
     retuple = ( 'spack', spack_pip, '' )
 
@@ -1082,9 +1008,6 @@ def install_git( prefix, repo, pip_ver, work_dir, log_fs  ):
     if repo == 'github':
         git_repo = git_url_tab[repo]
         pip = 'PiP'
-    elif repo == 'git-rccs':
-        git_repo = git_url_tab[repo]
-        pip = 'PIP'
     else:
         err_msg( [ 'Unknown git repo:', repo ], log=log_fs )
         return False, retuple
@@ -1262,60 +1185,75 @@ if ERROR:
     sys.exit( 1 )
 
 list_ready     = []
+list_install   = []
 list_pass0     = []
 list_pass1     = []
 list_skipped   = []
 list_not_ready = []
 list_noupdate  = []
-list_install   = []
 
 if FLAG_NOUPDATE:
     message( [] )
     message( [ 'Checking if already installed (--noupdate)' ] )
+
 for ver in pip_vers:
     for how in how_list:
-        prefdir = prefix_path( prefix_dir, how, ver )
-        if not is_ready( how, arch, centos_version, ver ) :
-            list_not_ready.append( ( how, ver ) )
-        elif is_already_installed( prefdir, how, ver ) and FLAG_NOUPDATE:
-            list_noupdate.append( ( how, ver ) )
+        if how is 'docker':
+            for centos in centos_list:
+                list_install.append( ( how, ver, centos ) )
         else:
-            list_pass0.append( ( how, ver ) )
+            list_install.append( ( how, ver, centos_version ) )
 
+for install in list_install:
+    ( how, ver, centos ) = install
+    if how is 'docker':
+        if not is_ready( how, arch, centos, ver ):
+            list_not_ready.append( ( how, ver, centos ) )
+        elif is_already_installed( '', how, ver, centos ) and FLAG_NOUPDATE:
+            list_noupdate.append( ( how, ver, centos ) )
+        else:
+            list_pass0.append( ( how, ver, centos ) )
+    else:
+        prefdir = prefix_path( prefix_dir, how, ver )
+        if not is_ready( how, arch, centos, ver ) :
+            list_not_ready.append( ( how, ver, centos_version ) )
+        elif is_already_installed( prefdir, how, ver, centos_version ) and FLAG_NOUPDATE:
+            list_noupdate.append( ( how, ver, centos_version ) )
+        else:
+            list_pass0.append( ( how, ver, centos_version ) )
 list_del_work = []
 
 # check work dir, delete if exists
-for ( how, ver ) in list_pass0:
+for ( how, ver, centos ) in list_pass0:
     if check_prefix( prefix_path( prefix_dir, how, ver ) ):
-        list_pass1.append( ( how, ver ) )
+        list_pass1.append( ( how, ver, centos ) )
     else:
-        list_skipped.append( ( how, ver ) )
-for ( how, ver ) in list_pass1:
+        list_skipped.append( ( how, ver, centos ) )
+for ( how, ver, centos ) in list_pass1:
     if check_work( work_path( work_dir, how, ver ) ):
-        list_ready.append( ( how, ver ) )
+        list_ready.append( ( how, ver, centos ) )
     else:
-        list_skipped.append( ( how, ver ) )
+        list_skipped.append( ( how, ver, centos ) )
 
 ERROR = False
 
 ### NOW we can actually do the installation(s)
 
 message( [] )
-message( [ 'Redhat/Centos:\t\t', centos_version ] )
+message( [ 'RedHat/CentOS:\t\t', centos_version ] )
 message( [ 'CPU Architecture:\t', arch ])
 
 if list_ready != []:
     message( [] )
     message( [ 'List of installations' ] )
-    for ( how, ver ) in list_ready:
+    for ( how, ver, centos ) in list_ready:
         message( [ how.upper(), '\tPiP-v' + str( ver ) ] )
         prefdir = prefix_path( prefix_dir, how, ver )
         if how == 'spack':
             message( [ '  Prefix dir:\t', prefdir ] )
+        elif how == 'docker':
+            message( [ '  Docker Tag:\t', resource_id( how, centos, ver ) ] )
         elif how == 'github':
-            message( [ '  Prefix dir:\t', prefdir ] )
-            message( [ '  Work dir:\t', work_path( work_dir, how, ver ) ] )
-        elif how == 'git-rccs':
             message( [ '  Prefix dir:\t', prefdir ] )
             message( [ '  Work dir:\t', work_path( work_dir, how, ver ) ] )
 
@@ -1338,7 +1276,7 @@ if list_not_ready != []:
         warn_msg( [ 'The followings are not ready and',
                     'installtion will be skipped' ] )
 
-    for ( how, ver ) in list_not_ready:
+    for ( how, ver, centos ) in list_not_ready:
         message( [ '\t'+how.upper()+': PiP-v' + str( ver ) ] )
 
 if list_noupdate != []:
@@ -1359,12 +1297,11 @@ if list_del_work != []:
         warn_msg( [ 'The following directory will be deleted' ] )
     else:
         warn_msg( [ 'The following directories will be deleted' ] )
-
     for wrk in list_del_work:
         message( [ '\t'+wrk ] )
 
 if list_ready == []:
-    err_msg( [ '\nNothing to install' ] )
+    err_msg( [ 'Nothing to install' ] )
     NULL_FS.close()
     sys.exit( 1 )
 
@@ -1387,12 +1324,9 @@ list_success  = []
 list_failure  = []
 list_skipped  = []
 
-for ( how, pip_ver ) in list_ready:
+for ( how, pip_ver, centos ) in list_ready:
     ERROR = False
     message( [] )
-    if not is_ready( how, arch, centos_version, pip_ver ):
-        list_skipped.append( ( how, arch, centos_version, pip_ver ) )
-        continue
 
     ( wdir, log_path ) = create_work( work_path( work_dir, how, pip_ver ) )
     if wdir is None:
@@ -1408,15 +1342,13 @@ for ( how, pip_ver ) in list_ready:
         message( [ now_str, SEP ], log=log_fs, out=None )
 
         if how == 'yum':
-            retuple = install_yum(    pip_ver, wdir, log_fs )
+            retuple = install_yum( pip_ver, wdir, log_fs )
         elif how == 'docker':
-            retuple = install_docker( pip_ver, log_fs )
+            retuple = install_docker( pip_ver, centos, log_fs )
         elif how == 'spack':
             retuple = install_spack( prefix_dir, how, pip_ver, log_fs )
         elif how == 'github':
-            retuple = install_git( prefix_dir,   how, pip_ver, wdir, log_fs )
-        elif how == 'git-rccs':
-            retuple = install_git( prefix_dir,   how, pip_ver, wdir, log_fs )
+            retuple = install_git( prefix_dir, how, pip_ver, wdir, log_fs )
 
         ( ok, ( how, obj, note ) ) = retuple
         if ok:
@@ -1506,7 +1438,9 @@ if not DRYRUN:
 
     if docker_success:
         message( [ 'DOCKER: To run PiP Docker image:' ] )
-        message( [ '    $ [sudo] docker run -it rikenpip/pip-v<PIP_VERSION> /bin/bash' ] )
+        message( [ '    $ [sudo] docker run -it <PIP_DOCKER_TAG> /bin/bash' ] )
+        message( [ '    PIP_DOCKER_TAGS: ' ], newline=False )
+        message( list_docker_images )
 
 NULL_FS.close()
 if list_failure != []:

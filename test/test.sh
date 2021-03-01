@@ -15,8 +15,8 @@ execute () {
 }
 
 OK () {
-    echo -n "OK TESTING $@"
-    echo "OK TESTING $@" >> test.log
+    echo -n "OK TESTING ${pip_pip} $@"
+    echo "OK TESTING ${pip_pip} $@" >> test.log
     execute $@
     if [ $retval == 0 ]; then
 	echo -e "\tSUCCESS"
@@ -29,8 +29,8 @@ OK () {
 }
 
 NG () {
-    echo -n "NG TESTING $@"
-    echo "NG TESTING $@" >> test.log
+    echo -n "NG TESTING ${pip_pip} $@"
+    echo "NG TESTING ${pip_pip} $@" >> test.log
     execute $@
     if [ $retval != 0 ]; then
 	echo -e "\tSUCCESS"
@@ -50,46 +50,49 @@ OK --ready=ALL
 OK --ready=arch
 OK --ready=linux
 
-OK --dryrun --how=yum
-OK --dryrun --how=yum --sudo
+#OK --dryrun --how=yum
+#OK --dryrun --how=yum --sudo
 OK --dryrun --how=docker
 OK --dryrun --how=docker --sudo
 OK --dryrun --how=spack
 OK --dryrun --how=github
-OK --dryrun --how=git-rccs
-OK --dryrun --how=yum,docker --sudo
+#OK --dryrun --how=yum,docker --sudo
 OK --dryrun --how=docker,spack
 OK --dryrun --how=spack,github
-OK --dryrun --how=github,git-rccs
-OK --dryrun --how=git-rccs,yum
 OK --dryrun --how=all
 OK --dryrun --how=ALL
 
-OK --dryrun --how=yum --sudo --noupdate
+#OK --dryrun --how=yum --sudo --noupdate
 OK --dryrun --how=docker --sudo --noupdate
 OK --dryrun --how=spack --noupdate
 
-OK --dryrun --how=yum      --version=all --sudo
+#OK --dryrun --how=yum      --version=all --sudo
 OK --dryrun --how=docker   --version=ALL --sudo
-OK --dryrun --how=spack    --version=-1  --sudo
-OK --dryrun --how=git-rccs --version=2   --sudo
+#OK --dryrun --how=spack    --version=-1  --sudo
 OK --dryrun --how=github   --version=3   --sudo
 
-OK --dryrun --how=yum    --prefix=INSTALL --sudo
+#OK --dryrun --how=yum    --prefix=INSTALL --sudo
 OK --dryrun --how=docker --prefix=INSTALL --sudo
 OK --dryrun --how=spack  --prefix=INSTALL
 OK --dryrun --how=github --prefix=INSTALL
 OK --dryrun --how=github --prefix=INSTALL//
 
-OK --dryrun --how=yum    --work=WORK --sudo
+#OK --dryrun --how=yum    --work=WORK --sudo
 OK --dryrun --how=docker --work=WORK --sudo
 OK --dryrun --how=spack  --work=WORK
 OK --dryrun --how=github --work=WORK
 
-OK --dryrun --how=yum    --sudo --notest
+#OK --dryrun --how=yum    --sudo --notest
 OK --dryrun --how=docker --sudo --notest
 OK --dryrun --how=spack  --notest
 OK --dryrun --how=github --notest
+
+OK --dryrun --how=docker --sudo --centos=7
+OK --dryrun --how=docker --sudo --centos=8
+OK --dryrun --how=docker --sudo --centos=7,8
+OK --dryrun --how=docker --sudo --centos=all
+NG --dryrun --how=docker --sudo --centos=5
+NG --dryrun --how=docker --sudo --centos=10
 
 OK --dryrun --how=github --prefix=INSTALL --work=WORK
 OK --dryrun --how=github --prefix=INSTALL --work=WORK --noglibc
