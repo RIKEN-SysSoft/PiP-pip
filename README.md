@@ -39,8 +39,8 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
 `python[2|3]` when invoking `pip-pip`.
 
 - `--how=<HOW>`
-  Specifying how to install PiP. Choice is one of `yum`, `docker`,
-  `spack` and `github`. `yum` and `docker` installations require root
+  Specifying how to install PiP. Choice is one of `docker`,
+  `spack` and `github`. `docker` installation requires the root
   privilege. Refer to the `--sudo` option below. `spack` will be
   installed automatically if `spack` is not yet installed (or not in
   the PATH). Default is `--how=github`.
@@ -65,7 +65,7 @@ Supported Linux (RHEL and CentOS are the guaranteed distributions):
   differences.
 
 - `--sudo`
-  Allow `sudo` when installing `yum` and `docker`. To enable this
+  Allow `sudo` when installing with `docker`. To enable this
   option, user must be a sudoer.
 
 - `--yes`
