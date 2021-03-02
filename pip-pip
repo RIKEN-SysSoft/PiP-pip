@@ -405,7 +405,7 @@ def expand( lst, lower=False ):
 
 ## check how
 how_list = expand( ARGS.how, lower=True )
-how_all = [ 'docker', 'spack', 'github' ]
+how_all = how_supported
 
 os_list = expand( ARGS.centos )
 if os_list == []:
@@ -1443,6 +1443,43 @@ if not DRYRUN:
             message( [ '     $ [sudo] docker run -it <PIP_DOCKER_TAG> /bin/bash' ] )
             message( [ '     PIP_DOCKER_TAGS: ' ], newline=False )
             message( list_docker_images )
+
+# check inter-option constraints
+warn_newline = False
+if ARGS.sudo:
+    if not 'yum' in how_list and not 'docker' in how_list:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--sudo' option is only effective with yum and docker installations" ] )
+if not ARGS.sudo and DRYRUN:
+    if 'yum' in how_list or 'docker' in how_list:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--sudo' option is required with yum and docker installations" ] )
+if ARGS.centos != '':
+    if not 'docker' in how_list:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--centos' option is only effective with docker installation" ] )
+if not 'github' in how_list:
+    if ARGS.noglibc:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--noglibc' option is only effective with github installation" ] )
+    if ARGS.nogdb:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--nogdb' option is only effective with github installation" ] )
+    if ARGS.notest:
+        if not warn_newline:
+            warn_newline = True
+            message( [] )
+        warn_msg( [ "'--notest' option is only effective with github installation" ] )
 
 NULL_FS.close()
 if list_failure != []:
