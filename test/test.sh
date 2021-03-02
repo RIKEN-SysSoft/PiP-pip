@@ -10,6 +10,8 @@ fi
 
 fail=false
 
+nfails=0
+
 retval=
 execute () {
     $pip_pip $@ >> test.log 2>&1
@@ -27,6 +29,7 @@ OK () {
 	echo -e "\t**** FAILED"
 	echo "FAILED" >> test.log
 	fail=true
+	nfails=$(($nfails+1))
     fi
 }
 
@@ -41,6 +44,7 @@ NG () {
 	echo -e "\t****FAILED"
 	echo "FAILED" >> test.log
 	fail=true
+	nfails=$(($nfails+1))
     fi
 }
 
@@ -122,8 +126,11 @@ NG --dryrun --nosuchoption
 NG --dryrun --how=unknown
 NG --dryrun --version=999
 
+OK --dryrun --prefix=. --work=.. --keep
+NG --dryrun --prefix=. --work=..
+
 if $fail; then
-    echo "FAILED !!!"
+    echo "FAILED ($nfails) !!!"
     exit 1
 fi
 
