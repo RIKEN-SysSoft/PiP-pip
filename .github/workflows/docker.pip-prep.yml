@@ -5,8 +5,6 @@ on:
     paths:
     - 'package/docker/pip-prep/**'
 
-  repository_dispatch:
-
   workflow_dispatch:
 
 jobs:
