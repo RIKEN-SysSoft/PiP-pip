@@ -1,0 +1,53 @@
+name: call the action to create Docker image process-in-process
+
+on:
+
+  workflow_dispatch:
+
+    inputs:
+
+      distros:
+        description: 'distribtions to create the images'
+        required: true
+        default: 'centos7,centos8'
+
+      pip_versions:
+        description: 'PiP versions to create the images'
+        required: true
+        default: '2,3'
+
+      platforms:
+        description: 'platforms of the images'
+        required: true
+        default: 'linux/amd64,linux/arm64'
+
+jobs:
+
+  dispatch:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: conver platforms string to an array
+        id: to_array
+        run: |
+           echo "::set-output name=distros::[$(echo "${{ github.event.inputs.distros }}" | awk -F, '{printf "\"%s\"", $1; for (i=2; i<=NF; i++) printf ", \"%s\"", $i; }')]"
+           echo "::set-output name=pip_versions::[$(echo "${{ github.event.inputs.pip_versions }}" | awk -F, '{printf "\"%s\"", $1; for (i=2; i<=NF; i++) printf ", \"%s\"", $i; }')]"
+
+      - name: debug print
+        run: |
+           echo "github.event.inputs.distros=<${{ github.event.inputs.distros }}>"
+           echo "github.event.inputs.pip_versions=<${{ github.event.inputs.pip_versions }}>"
+           echo "github.event.inputs.platforms=<${{ github.event.inputs.platforms }}>"
+           echo "steps.to_array.outputs.distros=<${{ steps.to_array.outputs.distros }}>"
+           echo "steps.to_array.outputs.pip_versions=<${{ steps.to_array.outputs.pip_versions }}>"
+
+
+      - name: dispatch event
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.PIP_BUILD_TOKEN }}
+          repository: ${{ github.repository_owner }}/PiP-pip
+          event-type: pip-gdb-test-ok
+          client-payload: '{ "distros": ${{ steps.to_array.outputs.distros }}, "pip_versions": ${{ steps.to_array.outputs.pip_versions }}, "platforms": ${{ toJson(github.event.inputs.platforms) }} }'
