@@ -13,14 +13,29 @@ jobs:
 
     strategy:
       matrix:
-        distro:
-          - centos7
-          - centos8
+        distro: [centos7, centos8]
+        archtype: [multiarch, amd64, arm64]
 
     runs-on: ubuntu-latest
 
     steps:
 
+      - name: Define variables - archsuffix and platforms
+        id: var
+        run: |
+          case ${{ matrix.archtype }} in
+          multiarch)
+            archsuffix=
+            platforms=linux/amd64,linux/arm64
+            ;;
+          *)
+            archsuffix=-${{ matrix.archtype }}
+            platforms=linux/${{ matrix.archtype }}
+            ;;
+          esac
+          echo "::set-output name=archsuffix::$archsuffix"
+          echo "::set-output name=platforms::$platforms"
+           
       - name: checkout
         uses: actions/checkout@v2
 
@@ -40,8 +55,26 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.var.outputs.platforms }}
           file: package/docker/pip-prep/${{ matrix.distro }}/Dockerfile
-          tags: ${{ secrets.DOCKERHUB_USER }}/pip-prep:${{ matrix.distro }}
+          tags: ${{ secrets.DOCKERHUB_USER }}/pip-prep:${{ matrix.distro }}${{ steps.var.outputs.archsuffix }}
           push: true
 
+  dispatch:
+
+    needs: build
+
+    strategy:
+      matrix:
+        repo: ['${{ github.repository_owner }}/PiP-glibc' ]
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: dispatch event
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.PIP_BUILD_TOKEN }}
+          repository: ${{ matrix.repo }}
+          event-type: pip-prep-docker-built
