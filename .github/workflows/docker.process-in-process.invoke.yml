@@ -48,6 +48,6 @@ jobs:
         uses: peter-evans/repository-dispatch@v1
         with:
           token: ${{ secrets.PIP_BUILD_TOKEN }}
-          repository: ${{ github.repository_owner }}/PiP-pip
+          repository: ${{ github.repository }}
           event-type: pip-gdb-test-ok
           client-payload: '{ "distros": ${{ steps.to_array.outputs.distros }}, "pip_versions": ${{ steps.to_array.outputs.pip_versions }}, "platforms": ${{ toJson(github.event.inputs.platforms) }} }'
