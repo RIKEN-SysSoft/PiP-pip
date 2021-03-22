@@ -1,4 +1,4 @@
-name: call the action to create Docker image process-in-process
+name: create process-in-process docker image
 
 on:
 
