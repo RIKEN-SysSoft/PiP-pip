@@ -1,4 +1,4 @@
-name: create process-in-process docker image
+name: create process-in-process Docker image
 
 on:
 
@@ -29,7 +29,7 @@ jobs:
 
     steps:
 
-      - name: conver platforms string to an array
+      - name: convert distros/pip_versions strings to arrays
         id: to_array
         run: |
            echo "::set-output name=distros::[$(echo "${{ github.event.inputs.distros }}" | awk -F, '{printf "\"%s\"", $1; for (i=2; i<=NF; i++) printf ", \"%s\"", $i; }')]"
