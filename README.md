@@ -1,12 +1,18 @@
+# **NEWS: Process-in-Process has new GitHub repo**
+  new URL: **https://github.com/procinproc**
+
+This repo is no longer maintained.  Refer to the above new repo.
+
 # PiP-pip
 
-[PiP](../../../PiP) package installing program
+[PiP](https://github.com/procinproc/PiP) package installing program
 
 # Description
 
 `pip-pip` is the program to build and install
-[PiP](../../../PiP), [PiP-glibc](../../../PiP-glibc) and
-[PiP-gdb](../../../PiP-gdb).
+[PiP](https://github.com/procinproc/PiP), 
+[PiP-glibc](https://github.com/procinproc/PiP-glibc) and
+[PiP-gdb](https://github.com/procinproc/PiP-gdb).
 
 # Prerequisite
 
@@ -146,4 +152,7 @@ Or, join our PiP users' mailing list;
 
 # Author
 
-Atsushi Hori, Riken CCS (Japan)
+Atsushi Hori<br>
+National Institute for Informatics<br>
+(formerly Riken Center for Commputational Science)<br>
+Japan<br>
