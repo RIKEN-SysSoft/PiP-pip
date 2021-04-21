@@ -9,7 +9,7 @@ This repo is no longer maintained.  Refer to the above new repo.
 
 # Description
 
-`pip-pip` is the program to build and install
+`pip-pip` is the program to build and install (**new URLs**)
 [PiP](https://github.com/procinproc/PiP), 
 [PiP-glibc](https://github.com/procinproc/PiP-glibc) and
 [PiP-gdb](https://github.com/procinproc/PiP-gdb).
